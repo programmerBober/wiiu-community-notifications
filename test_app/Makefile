@@ -6,7 +6,7 @@ $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/de
 endif
 
 WUT_ROOT ?= $(DEVKITPRO)/wut
-CXX ?= powerpc-eabi-g++
+CXX := $(DEVKITPPC)/bin/powerpc-eabi-g++
 CXXFLAGS := -std=c++20 -O2 -Wall -DESPRESSO -mcpu=750 -meabi -mhard-float \
             -D__WIIU__ -D__WUT__ \
             -I$(WUT_ROOT)/include -I$(WUT_ROOT)/usr/include
