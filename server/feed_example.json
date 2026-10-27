@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "notifications": [
+    {
+      "id": "pretendo-splatfest-2026-10",
+      "sender": "Pretendo Network",
+      "title": "Splatfest: Cats vs Dogs!",
+      "message": "Inkopolis Plaza is bustling! Choose your team at the pledge box and prepare for battle this weekend.",
+      "timestamp": 1793134800,
+      "priority": 1,
+      "duration": 8.0
+    },
+    {
+      "id": "smm-course-spotlight-042",
+      "sender": "Mario Maker World",
+      "title": "Featured Course: Starry Heights",
+      "message": "Course by @LuigiFan: 'Starry Heights Galaxy' is trending with 98% clears. Jump in and try it!",
+      "timestamp": 1793138400,
+      "priority": 0,
+      "duration": 6.5
+    },
+    {
+      "id": "community-friday-game-night",
+      "sender": "Wii U Community",
+      "title": "Friday Kart 8 Grand Prix!",
+      "message": "Join the 150cc Community Tournament tonight at 8:00 PM UTC. Tournament code: 4421-9902.",
+      "timestamp": 1793142000,
+      "priority": 1,
+      "duration": 7.5
+    }
+  ]
+}

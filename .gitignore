@@ -1,0 +1,32 @@
+# Binaries and build artifacts
+bin/
+build/
+build_wiiu/
+*.o
+*.a
+*.so
+*.elf
+*.rpx
+*.wups
+*.wms
+*.wuhb
+
+# Local test & state files
+data/
+test_data/
+*.log
+*.tmp
+
+# Environment & credentials
+.env
+.env.*
+*.key
+*.pem
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

@@ -1,0 +1,24 @@
+#-------------------------------------------------------------------------------
+# Wii U WUPS Plugin Makefile
+#-------------------------------------------------------------------------------
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro")
+endif
+
+TOPDIR ?= $(CURDIR)
+include $(DEVKITPRO)/wups/share/wups_rules
+
+WUT_ROOT := $(DEVKITPRO)/wut
+WUPS_ROOT := $(DEVKITPRO)/wups
+
+TARGET := CommunityNotifications
+BUILD := build_wiiu
+SOURCES := src
+INCLUDES := include src
+
+CFLAGS := -Wall -O2 -ffunction-sections $(MACHDEP)
+CFLAGS += -Iinclude -D__WIIU__ -D__WUT__ -D__WUPS__
+CXXFLAGS := $(CFLAGS) -std=c++20
+
+LIBS := -lwups -lwut -lnotifications
+LIBDIRS := $(PORTLIBS) $(WUPS_ROOT) $(WUT_ROOT)
