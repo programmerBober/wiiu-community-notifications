@@ -9,18 +9,23 @@
 #include <nn/acp/drcled_c.h>
 #include <nn/act/client_cpp.h>
 #include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define SERVER_PORT 7331
 #define STACK_SIZE 0x8000
+#define LOG_FILE "fs:/vol/external01/wiiu/notifications/post_log.txt"
 
 static volatile bool s_server_running = false;
+static int s_server_fd = -1;
 static uint8_t s_thread_stack[STACK_SIZE] __attribute__((aligned(32)));
 static OSThread s_server_thread;
 static uint32_t s_persistent_id = 1;
@@ -28,32 +33,47 @@ static uint32_t s_persistent_id = 1;
 static NMColor s_cyan_bg = { 0, 162, 232, 240 };
 static NMColor s_white_fg = { 255, 255, 255, 255 };
 
+static void LogMessage(const char* fmt, ...) {
+    FILE* f = fopen(LOG_FILE, "a");
+    if (!f) return;
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(f, fmt, args);
+    va_end(args);
+    fprintf(f, "\n");
+    fclose(f);
+}
+
 //-----------------------------------------------------------------------------
 // Official SpotPass News Injection via nn::boss::News::PostNews & zlib125
 //-----------------------------------------------------------------------------
 static bool PostOfficialNotification(const char* xml_text, char* out_status, size_t out_status_sz) {
+    LogMessage("PostOfficialNotification: starting...");
     OSDynLoad_Module zlib_mod, boss_mod;
     if (OSDynLoad_Acquire("zlib125.rpl", &zlib_mod) != OS_DYNLOAD_OK) {
         if (out_status) snprintf(out_status, out_status_sz, "Err: zlib125.rpl missing");
+        LogMessage("Err: zlib125.rpl missing");
         return false;
     }
     if (OSDynLoad_Acquire("nn_boss.rpl", &boss_mod) != OS_DYNLOAD_OK) {
         if (out_status) snprintf(out_status, out_status_sz, "Err: nn_boss.rpl missing");
+        LogMessage("Err: nn_boss.rpl missing");
         return false;
     }
 
     int (*z_compress)(uint8_t *dest, uint32_t *destLen, const uint8_t *source, uint32_t sourceLen) = nullptr;
     uint32_t (*boss_init)() = nullptr;
-    uint32_t (*boss_post_news)(const uint8_t *data, uint32_t size) = nullptr;
+    uint32_t (*boss_post_news_ex)(const uint8_t *data, uint32_t size, uint32_t* pContentId, uint32_t opt) = nullptr;
     uint32_t (*boss_finalize)() = nullptr;
 
     OSDynLoad_FindExport(zlib_mod, OS_DYNLOAD_EXPORT_FUNC, "compress", (void**)&z_compress);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Initialize__Q2_2nn4bossFv", (void**)&boss_init);
-    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUi", (void**)&boss_post_news);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2", (void**)&boss_post_news_ex);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Finalize__Q2_2nn4bossFv", (void**)&boss_finalize);
 
-    if (!z_compress || !boss_init || !boss_post_news) {
+    if (!z_compress || !boss_init || !boss_post_news_ex) {
         if (out_status) snprintf(out_status, out_status_sz, "Err: symbols not found");
+        LogMessage("Err: symbols not found (z=%p, init=%p, post=%p)", z_compress, boss_init, boss_post_news_ex);
         return false;
     }
 
@@ -62,6 +82,7 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     uint8_t* comp_buf = (uint8_t*)malloc(comp_len);
     if (!comp_buf) {
         if (out_status) snprintf(out_status, out_status_sz, "Err: OOM");
+        LogMessage("Err: OOM");
         return false;
     }
 
@@ -69,16 +90,30 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     if (z_ret != 0) {
         free(comp_buf);
         if (out_status) snprintf(out_status, out_status_sz, "Err: zlib %d", z_ret);
+        LogMessage("Err: zlib %d", z_ret);
         return false;
     }
+    LogMessage("Compressed XML %u -> %u bytes", xml_len, comp_len);
 
+    // 1. Initialize nn::boss
+    LogMessage("Calling boss_init()...");
     uint32_t b_init = boss_init();
-    uint32_t post_ret = boss_post_news(comp_buf, comp_len);
-    if (boss_finalize) boss_finalize();
+    LogMessage("boss_init returned 0x%08X", b_init);
+
+    // 2. Post news into official Nintendo notification menu
+    uint32_t content_id = 0;
+    LogMessage("Calling boss_post_news_ex(buf, %u, &content_id, 0)...", comp_len);
+    uint32_t post_ret = boss_post_news_ex(comp_buf, comp_len, &content_id, 0);
+    LogMessage("boss_post_news_ex returned 0x%08X, content_id=%u", post_ret, content_id);
+
+    if (boss_finalize) {
+        boss_finalize();
+        LogMessage("boss_finalize finished");
+    }
     free(comp_buf);
 
     if (out_status) {
-        snprintf(out_status, out_status_sz, "PostNews: 0x%08X (init=0x%08X, %u B)", post_ret, b_init, comp_len);
+        snprintf(out_status, out_status_sz, "post=0x%08X, ID=%u", post_ret, content_id);
     }
     return (post_ret == 0);
 }
@@ -130,11 +165,11 @@ static void FormatSpotPassXml(char* dst, size_t dst_sz,
 // TCP Socket Server for Desktop Notifications (Port 7331)
 //-----------------------------------------------------------------------------
 static int ServerThreadMain(int argc, const char** argv) {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) return -1;
+    s_server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (s_server_fd < 0) return -1;
 
     int enable = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+    setsockopt(s_server_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
 
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
@@ -142,28 +177,39 @@ static int ServerThreadMain(int argc, const char** argv) {
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(SERVER_PORT);
 
-    if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        close(server_fd);
+    if (bind(s_server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        close(s_server_fd);
+        s_server_fd = -1;
         return -1;
     }
 
-    if (listen(server_fd, 4) < 0) {
-        close(server_fd);
+    if (listen(s_server_fd, 4) < 0) {
+        close(s_server_fd);
+        s_server_fd = -1;
         return -1;
     }
-
-    // Set non-blocking mode on socket
-    setsockopt(server_fd, SOL_SOCKET, SO_NONBLOCK, &enable, sizeof(enable));
 
     char buf[2048];
 
     while (s_server_running) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(s_server_fd, &read_fds);
+
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 250000; // 250ms timeout
+
+        int sel = select(s_server_fd + 1, &read_fds, nullptr, nullptr, &tv);
+        if (sel <= 0) {
+            continue;
+        }
+
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
-        int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+        int client_fd = accept(s_server_fd, (struct sockaddr*)&client_addr, &client_len);
 
         if (client_fd < 0) {
-            OSSleepTicks(OSMillisecondsToTicks(50));
             continue;
         }
 
@@ -172,7 +218,6 @@ static int ServerThreadMain(int argc, const char** argv) {
         if (bytes > 0) {
             buf[bytes] = '\0';
 
-            // Simple parser for desktop JSON: {"title":"...","body":"...","app":"..."}
             char title[128] = "Desktop Notification";
             char body[512] = "New notification received from desktop.";
             char app[32] = "";
@@ -228,7 +273,7 @@ static int ServerThreadMain(int argc, const char** argv) {
             ACPTurnOnDrcLed(s_persistent_id, 1);
 
             char toast[256];
-            snprintf(toast, sizeof(toast), "✦ Desktop Notification ✦\n%s: %s", title, body);
+            snprintf(toast, sizeof(toast), "✦ Desktop Alert Injected! ✦\n%s", status);
             NotificationModule_AddInfoNotificationEx(toast, 7.0f, s_white_fg, s_cyan_bg, nullptr, nullptr);
 
             send(client_fd, "OK\n", 3, 0);
@@ -236,87 +281,11 @@ static int ServerThreadMain(int argc, const char** argv) {
         close(client_fd);
     }
 
-    close(server_fd);
+    if (s_server_fd >= 0) {
+        close(s_server_fd);
+        s_server_fd = -1;
+    }
     return 0;
-}
-
-//-----------------------------------------------------------------------------
-// Feed Synchronizer (Imports feed.json into official SpotPass database)
-//-----------------------------------------------------------------------------
-static void SyncLocalFeed(const char* filepath) {
-    FILE* f = fopen(filepath, "r");
-    if (!f) return;
-
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    if (sz <= 0 || sz > 65536) {
-        fclose(f);
-        return;
-    }
-
-    char* json = (char*)malloc(sz + 1);
-    if (!json) {
-        fclose(f);
-        return;
-    }
-
-    fread(json, 1, sz, f);
-    json[sz] = '\0';
-    fclose(f);
-
-    // Simple parser for feed.json notifications
-    char* cur = json;
-    uint32_t imported = 0;
-
-    while ((cur = strstr(cur, "\"title\":")) != nullptr) {
-        char title[128] = "Community Notice";
-        char body[512] = "";
-
-        char* q1 = strchr(cur + 8, '\"');
-        if (q1) {
-            char* q2 = strchr(q1 + 1, '\"');
-            if (q2) {
-                size_t l = q2 - (q1 + 1);
-                if (l > sizeof(title) - 1) l = sizeof(title) - 1;
-                strncpy(title, q1 + 1, l);
-                title[l] = '\0';
-            }
-        }
-
-        char* m_pos = strstr(cur, "\"message\":");
-        if (m_pos) {
-            q1 = strchr(m_pos + 10, '\"');
-            if (q1) {
-                char* q2 = strchr(q1 + 1, '\"');
-                if (q2) {
-                    size_t l = q2 - (q1 + 1);
-                    if (l > sizeof(body) - 1) l = sizeof(body) - 1;
-                    strncpy(body, q1 + 1, l);
-                    body[l] = '\0';
-                }
-            }
-        }
-
-        if (body[0] != '\0') {
-            char xml[1024];
-            FormatSpotPassXml(xml, sizeof(xml), title, body, "000500101004D200", "HAPPY", "NONE");
-            PostOfficialNotification(xml, nullptr, 0);
-            imported++;
-        }
-
-        cur += 8;
-    }
-
-    free(json);
-
-    if (imported > 0) {
-        char toast[128];
-        snprintf(toast, sizeof(toast), "✦ Feed Synced ✦\nImported %u official SpotPass notices!", imported);
-        NotificationModule_AddInfoNotificationEx(toast, 6.0f, s_white_fg, s_cyan_bg, nullptr, nullptr);
-        ACPTurnOnDrcLed(s_persistent_id, 1);
-    }
 }
 
 //-----------------------------------------------------------------------------
@@ -335,21 +304,34 @@ int main(int argc, char **argv) {
 
     s_persistent_id = nn::act::GetPersistentId();
     if (s_persistent_id == 0) s_persistent_id = 1;
+
+    LogMessage("=== NotifyTest Started ===");
+
+    // 1. AUTOMATICALLY INJECT SPLATOON NOTIFICATION ON STARTUP!
+    char startup_xml[1024];
+    FormatSpotPassXml(startup_xml, sizeof(startup_xml),
+        "Splatoon",
+        "Inkopolis is calling! It's been a while since your last Turf War. Jump back in and claim your turf!",
+        "0005000010176A00", "HAPPY", "APP");
+
+    char startup_status[128];
+    bool injected_ok = PostOfficialNotification(startup_xml, startup_status, sizeof(startup_status));
     ACPTurnOnDrcLed(s_persistent_id, 1);
 
     if (notif_status == NOTIFICATION_MODULE_RESULT_SUCCESS) {
+        char toast[256];
+        snprintf(toast, sizeof(toast),
+            "✦ Splatoon Notification Injected! ✦\n%s\nPress [+] or HOME to exit!",
+            startup_status);
         NotificationModule_AddInfoNotificationEx(
-            "✦ Official Notification System Active ✦\n[A]: Splatoon | [B]: Minecraft | [X]: Pretendo\nListening on TCP :7331 for Desktop Alerts",
-            10.0f,
+            toast,
+            12.0f,
             s_white_fg,
             s_cyan_bg,
             nullptr,
             nullptr
         );
     }
-
-    // 1. Sync any pending community items from feed.json
-    SyncLocalFeed("fs:/vol/external01/wiiu/notifications/feed.json");
 
     // 2. Launch background TCP listener for Desktop Bridge on port 7331
     s_server_running = true;
@@ -378,7 +360,7 @@ int main(int argc, char **argv) {
                 ACPTurnOnDrcLed(s_persistent_id, 1);
 
                 char toast[256];
-                snprintf(toast, sizeof(toast), "✦ Splatoon Reminder Injected! ✦\n%s", status);
+                snprintf(toast, sizeof(toast), "✦ Splatoon Reminder ✦\n%s", status);
                 NotificationModule_AddInfoNotificationEx(toast, 6.0f, s_white_fg, s_cyan_bg, nullptr, nullptr);
             }
 
@@ -395,7 +377,7 @@ int main(int argc, char **argv) {
                 ACPTurnOnDrcLed(s_persistent_id, 1);
 
                 char toast[256];
-                snprintf(toast, sizeof(toast), "✦ Minecraft Reminder Injected! ✦\n%s", status);
+                snprintf(toast, sizeof(toast), "✦ Minecraft Reminder ✦\n%s", status);
                 NotificationModule_AddInfoNotificationEx(toast, 6.0f, s_white_fg, s_cyan_bg, nullptr, nullptr);
             }
 
@@ -412,7 +394,7 @@ int main(int argc, char **argv) {
                 ACPTurnOnDrcLed(s_persistent_id, 1);
 
                 char toast[256];
-                snprintf(toast, sizeof(toast), "✦ Pretendo Notice Injected! ✦\n%s", status);
+                snprintf(toast, sizeof(toast), "✦ Pretendo Notice ✦\n%s", status);
                 NotificationModule_AddInfoNotificationEx(toast, 6.0f, s_white_fg, s_cyan_bg, nullptr, nullptr);
             }
 
@@ -442,7 +424,7 @@ int main(int argc, char **argv) {
         WHBGfxFinishRender();
     }
 
-    // Stop background socket thread
+    // Stop background socket thread cleanly and safely!
     s_server_running = false;
     OSJoinThread(&s_server_thread, nullptr);
 
