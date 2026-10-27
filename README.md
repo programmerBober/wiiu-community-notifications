@@ -1,5 +1,10 @@
 # 🎮 Wii U Community Notification System (SpotPass Revived)
 
+> [!WARNING]
+> **⚠️ VIBE CODED & EXPERIMENTAL — NOT READY FOR GENERAL USE**
+>
+> This repository is an experimental, vibe-coded prototype exploring Wii U notification hooks, GamePad DRC LED patterns, and Aroma overlay rendering. It is currently in active research/early development and **not ready for daily end-user setups**. Use at your own discretion for testing and research purposes only.
+
 Bring back the authentic magic of the Wii U! Walk into your room, see the GamePad glowing with a breathing blue LED around the HOME button, hear the chime, and see lively community announcements, Splatfest bulletins, game nights, and server updates right as you boot your console.
 
 ---
