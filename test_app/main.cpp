@@ -1,6 +1,6 @@
 #include <whb/proc.h>
-#include <whb/log.h>
-#include <whb/log_console.h>
+#include <whb/gfx.h>
+#include <sysapp/launch.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
 #include <vpad/input.h>
@@ -11,17 +11,24 @@
 
 int main(int argc, char **argv) {
     WHBProcInit();
-    WHBLogConsoleInit();
 
-    // 1. Initialize notification system and GamePad LED
+    // 1. Initialize GX2 Graphics Pipeline
+    // NotificationModule is a GX2 overlay! It requires GX2 frame swaps to draw toasts.
+    if (!WHBGfxInit()) {
+        SYSLaunchMenu();
+        WHBProcShutdown();
+        return 0;
+    }
+
+    // 2. Connect to Aroma NotificationModule
     NotificationModuleStatus notif_status = NotificationModule_InitLibrary();
+
+    // 3. Turn on the iconic GamePad HOME button breathing LED
     uint32_t persistentId = nn::act::GetPersistentId();
     if (persistentId == 0) persistentId = 1;
-
-    // 2. Trigger GamePad LED breathing pulse immediately on startup!
     ACPTurnOnDrcLed(persistentId, 1);
 
-    // 3. Trigger authentic Wii U Community Notification Toast on startup!
+    // 4. Dispatch the authentic Wii U Cyan Toast immediately on startup
     NMColor cyan_bg = { 0, 162, 232, 240 };
     NMColor white_fg = { 255, 255, 255, 255 };
 
@@ -40,29 +47,11 @@ int main(int argc, char **argv) {
     VPADStatus vpad;
     VPADReadError verror;
 
-    WHBLogPrintf("=================================================");
-    WHBLogPrintf("   WII U COMMUNITY NOTIFICATIONS - TEST RUNNER   ");
-    WHBLogPrintf("=================================================");
-    WHBLogPrintf(" NotificationModule Status: %s", 
-                 notif_status == NOTIFICATION_MODULE_RESULT_SUCCESS ? "CONNECTED (Ready)" : "Not Detected");
-    WHBLogPrintf(" Persistent ID: 0x%08X", persistentId);
-    WHBLogPrintf("");
-    WHBLogPrintf(" CONTROLS:");
-    WHBLogPrintf("  [A] Trigger SpotPass Community Announcement Toast");
-    WHBLogPrintf("  [B] Trigger Warning / Error Notification");
-    WHBLogPrintf("  [X] Turn ON GamePad HOME Button Breathing LED");
-    WHBLogPrintf("  [Y] Turn OFF GamePad HOME Button LED");
-    WHBLogPrintf("  [+] Exit back to Wii U Menu");
-    WHBLogPrintf("");
-    WHBLogPrintf(" Tip: Watch the GamePad HOME LED ring & TV top-left!");
-    WHBLogPrintf("-------------------------------------------------");
-    WHBLogConsoleDraw();
-
     while (WHBProcIsRunning()) {
         VPADRead(VPAD_CHAN_0, &vpad, 1, &verror);
 
         if (verror == VPAD_READ_SUCCESS) {
-            // [A] Send Community Announcement
+            // [A] Send Community Announcement Toast
             if (vpad.trigger & VPAD_BUTTON_A) {
                 count++;
                 char msg[256];
@@ -76,42 +65,52 @@ int main(int argc, char **argv) {
                     nullptr
                 );
                 ACPTurnOnDrcLed(persistentId, 1);
-                WHBLogPrintf(" -> [A] Sent Community Splatfest Toast #%u & Pulsed LED!", count);
             }
 
-            // [B] Send Error / Warning Toast
+            // [B] Send Error / Warning Shake Toast
             if (vpad.trigger & VPAD_BUTTON_B) {
                 NotificationModule_AddErrorNotification("✦ Alert Test ✦\nWarning: Server maintenance in 15 mins.");
-                WHBLogPrintf(" -> [B] Sent Error Notification Shake Toast!");
             }
 
             // [X] Turn ON GamePad HOME LED
             if (vpad.trigger & VPAD_BUTTON_X) {
                 ACPTurnOnDrcLed(persistentId, 1);
-                WHBLogPrintf(" -> [X] GamePad HOME Button LED turned ON");
             }
 
             // [Y] Turn OFF GamePad HOME LED
             if (vpad.trigger & VPAD_BUTTON_Y) {
                 ACPTurnOffDrcLed();
-                WHBLogPrintf(" -> [Y] GamePad HOME Button LED turned OFF");
             }
 
-            // [+] or HOME button exits
-            if (vpad.trigger & (VPAD_BUTTON_PLUS | VPAD_BUTTON_HOME)) {
-                WHBLogPrintf(" -> Exiting to Wii U Menu...");
-                WHBLogConsoleDraw();
-                break;
+            // [+] or [-] or HOME triggers a clean transition back to the Wii U Menu
+            if (vpad.trigger & (VPAD_BUTTON_PLUS | VPAD_BUTTON_MINUS | VPAD_BUTTON_HOME)) {
+                SYSLaunchMenu();
+                // WHBProcIsRunning() will return false on the next cycle
             }
         }
 
-        WHBLogConsoleDraw();
-        OSSleepTicks(OSMillisecondsToTicks(16));
+        // Render GX2 frame for both TV and GamePad
+        // NotificationModule hooks into these swap buffers to render the toasts on top!
+        WHBGfxBeginRender();
+
+        // TV screen (Deep authentic Wii U Midnight Blue)
+        WHBGfxBeginRenderTV();
+        WHBGfxClearColor(0.06f, 0.10f, 0.16f, 1.0f);
+        WHBGfxFinishRenderTV();
+
+        // DRC GamePad screen
+        WHBGfxBeginRenderDRC();
+        WHBGfxClearColor(0.06f, 0.10f, 0.16f, 1.0f);
+        WHBGfxFinishRenderDRC();
+
+        // Finalize frame & swap scan buffers
+        WHBGfxFinishRender();
     }
 
+    // Clean exit
     ACPTurnOffDrcLed();
     NotificationModule_DeInitLibrary();
-    WHBLogConsoleFree();
+    WHBGfxShutdown();
     WHBProcShutdown();
     return 0;
 }
