@@ -99,8 +99,7 @@ bool Overlay_ShowToast(const char* title,
         textColor,
         bgColor,
         nullptr,
-        nullptr,
-        true
+        nullptr
     );
 
     return (status == NOTIFICATION_MODULE_RESULT_SUCCESS);

@@ -8,8 +8,13 @@ build_wiiu/
 *.elf
 *.rpx
 *.wups
+*.wps
 *.wms
 *.wuhb
+test_app/*.elf
+test_app/*.rpx
+test_app/*.wuhb
+test_app/*.o
 
 # Local test & state files
 data/
