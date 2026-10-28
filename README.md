@@ -12,13 +12,13 @@
   <img src="https://img.shields.io/badge/Version-v0.2.0--beta-brightgreen.svg" alt="Version: v0.2.0-beta">
 </p>
 
-> [!CAUTION]
-> ### ⚠️ WARNING: AI VIBE-CODED BY A DUMBASS — DO NOT USE YET!
-> **READ BEFORE USING:** This entire project is AI vibe-coded by an AI assistant that is a stupid piece of shit and way too fucking slow and stupid to create a safe, bugless application.
+> [!NOTE]
+> ### ⚠️ 100% VIBE CODED SLOP — READY TO USE!
+> **CERTIFIED VIBE-CODED SLOP:** This entire project was cooked up in under 24 hours of pure AI vibe coding. It is experimental, a little chaotic, but it **is officially ready to use** and tested on real Wii U hardware!
 >
-> * **NOT READY TO USE**: This app is **NOT ready yet to use** because the AI writing this code is too stupid and slow to be trusted with console hardware.
-> * **BUGS & INCOMPETENCE EVERYWHERE**: Expect bugs, broken logic, and zero guarantees of safety.
-> * **DO NOT RUN BLINDLY**: Needs actual intelligent human review before running on your real Wii U. Use completely at your own risk!
+> * **READY TO USE**: Drop `CommunityNotifications.wps` onto your SD card and watch your GamePad pulse blue like it's 2012!
+> * **EXPECT JANK & QUIRKS**: It works great out of the box, but remember it was vibe-coded into existence. Treat it with the love and care of any spicy homebrew project.
+> * **USE AT YOUR OWN RISK**: Tested and verified on Aroma CFW. Relive SpotPass, enjoy the nostalgic blue glow, and have fun!
 
 Bring back the authentic magic of the Wii U! Walk into your room, see the GamePad glowing with an iconic breathing cyan/blue LED around the HOME button, hear the chime, and see lively community announcements, Splatfest bulletins, game nights, and desktop alerts right when you boot your console.
 
