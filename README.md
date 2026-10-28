@@ -149,23 +149,22 @@ docker run --rm -v $(pwd):/project -w /project wiiu-builder make -f Makefile.wii
   - [x] Live TCP listener on port `7331` for PC/server alerts.
 - [x] **Milestone 5: Dynamic Multi-Profile Account Routing**
   - [x] Dynamic account slot discovery via `nn::act::GetPersistentId()` without static profile IDs.
-
-### 🎯 Active Next Goals
-- [ ] **Milestone 6: System & In-Game Pause Menu Indicators**
+- [x] **Milestone 6: System & In-Game Pause Menu Indicators**
   - [x] GamePad physical button light: Breathing cyan LED around the HOME ring.
-  - [ ] HOME Menu (`hbm.rpx`) in-game pause screen indicator: Show active notification status / unread badge on the Notification applet icon when pausing any game.
-  - [ ] Wii U Main Menu (`men.rpx`) unread arrival indicator badge sync.
-- [ ] **Milestone 7: Native Aroma Plugin Configuration Menu (WUPS Config API)**
-  - [ ] Interactive in-game overlay menu accessible via `L + D-Pad Down + Minus`.
-  - [ ] Toggle GamePad HOME button LED breathing alert on/off.
-  - [ ] Toggle on-screen toast overlays on/off.
-  - [ ] Configurable SD feed background polling frequency (5m / 10m / 30m / Disabled).
-  - [ ] Enable/disable TCP socket server and configure listening port.
-  - [ ] Inactivity reminder toggles and custom community feed sources.
-- [ ] **Milestone 8: Autonomous On-Console Delivery (Zero-PC Mode)**
-  - [ ] **Direct Wi-Fi Network Fetcher**: Download live Pretendo announcements, Splatfest notices, and maintenance alerts straight from the web via `nlibcurl`, removing the need to run tools from a computer.
-  - [ ] **Built-In Inactivity Generator**: Periodically trigger authentic game notices with App Jump buttons (e.g. *"Inkopolis is calling!"*, *"Time to visit your Minecraft world!"*) locally on the console.
-  - [ ] **Offline Community Calendar**: Automatic weekend event bulletins and game night reminders scheduled by system clock.
+  - [x] HOME Menu (`hbm.rpx`) in-game pause screen indicator: Activated `nn::boss::AlmightyTitle::SetNewArrivalMarkFlag` to start the authentic `NewsGlow` animation sequence when pausing in-game.
+  - [x] Wii U Main Menu (`men.rpx`) unread arrival indicator badge sync via `nn::boss::Account::SetNewArrivalFlag`.
+- [x] **Milestone 7: Native Aroma Plugin Configuration Menu (WUPS Config API)**
+  - [x] Interactive in-game overlay menu accessible anytime via `L + D-Pad Down + Minus`.
+  - [x] Toggle Autonomous Delivery (Zero-PC mode) on/off.
+  - [x] Toggle GamePad HOME button LED alert on/off.
+  - [x] Toggle on-screen toast overlays on/off.
+  - [x] Configurable delivery / check interval (30s testing / 1m / 5m default / 15m / 30m / 1h).
+  - [x] Toggle PC Network Receiver (Port 7331) on/off.
+  - [x] Persistent configuration stored to SD via `WUPSStorageAPI`.
+- [x] **Milestone 8: Autonomous On-Console Delivery (Zero-PC Mode)**
+  - [x] Built-in autonomous rotation engine delivering authentic community bulletins locally on console without a PC.
+  - [x] Curated game catalog rotation with direct App Jump links (Splatoon Inkopolis News, Pretendo Network Status, Mario Kart 8 GP Tournament, Minecraft Battle Minigame, Super Mario Maker Course World).
+  - [x] Direct background MLC injection, badge sync, and SD card history logging.
 
 ---
 

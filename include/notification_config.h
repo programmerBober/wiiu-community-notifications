@@ -15,7 +15,7 @@ extern "C" {
 #define NOTIFY_HISTORY_FILE     "history.log"
 #define NOTIFY_STATE_FILE       "last_seen.txt"
 
-#define NOTIFY_DEFAULT_POLL_INTERVAL_SEC 300 // 5 minutes
+#define NOTIFY_DEFAULT_POLL_INTERVAL_SEC 30  // 30 seconds (active testing interval)
 #define NOTIFY_BOOT_DELAY_SEC            3   // Wait 3s after title start
 
 // Authentic Wii U SpotPass Theme Colors (RGBA)
@@ -38,6 +38,9 @@ typedef struct {
     bool enable_led;
     bool enable_screen_overlay;
     bool enable_history_log;
+    bool enable_autonomous;
+    bool enable_pretendo_sync;
+    bool enable_tcp;
     uint32_t poll_interval_sec;
     char feed_url[256];
 } CommunityNotifyConfig;

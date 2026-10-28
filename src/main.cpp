@@ -95,6 +95,10 @@ static void FormatSpotPassXml(char* dst, size_t dst_sz,
 
 #if defined(__WIIU__) || defined(__WUT__) || defined(__WUPS__)
 #include <wups.h>
+#include <wups/config_api.h>
+#include <wups/storage.h>
+#include <wups/config/WUPSConfigItemBoolean.h>
+#include <wups/config/WUPSConfigItemMultipleValues.h>
 #include <malloc.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
@@ -116,6 +120,7 @@ WUPS_PLUGIN_AUTHOR("programmerBober");
 WUPS_PLUGIN_LICENSE("GPLv3");
 
 WUPS_USE_WUT_DEVOPTAB();
+WUPS_USE_STORAGE("community_notifications");
 
 #define PLUGIN_TCP_PORT 7331
 #define PLUGIN_LOG_SD   "fs:/vol/external01/wiiu/notifications/post_log.txt"
@@ -306,11 +311,25 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     uint32_t (*boss_set_new_arrival)(const uint32_t *accountThis, uint32_t flag) = nullptr;
     uint32_t (*boss_finalize)() = nullptr;
 
+    typedef void (*boss_almighty_ctor_t)(void* self, uint32_t pid, const uint64_t* title_id);
+    typedef void (*boss_almighty_dtor_t)(void* self);
+    typedef void (*boss_almighty_set_mark_t)(void* self, bool flag);
+    typedef void (*boss_almighty_set_arrival_t)(void* self, bool flag);
+
+    boss_almighty_ctor_t boss_almighty_ctor = nullptr;
+    boss_almighty_dtor_t boss_almighty_dtor = nullptr;
+    boss_almighty_set_mark_t boss_almighty_set_mark = nullptr;
+    boss_almighty_set_arrival_t boss_almighty_set_arrival = nullptr;
+
     OSDynLoad_FindExport(zlib_mod, OS_DYNLOAD_EXPORT_FUNC, "compress", (void**)&z_compress);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Initialize__Q2_2nn4bossFv", (void**)&boss_init);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2", (void**)&boss_post_news_pids);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNewsToPluralAccount__Q3_2nn4boss4NewsSFPUcUiT1T2", (void**)&boss_post_news_plural);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss7AccountFb", (void**)&boss_set_new_arrival);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__ct__Q3_2nn4boss13AlmightyTitleFUiQ3_2nn4boss7TitleID", (void**)&boss_almighty_ctor);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__dt__Q3_2nn4boss13AlmightyTitleFv", (void**)&boss_almighty_dtor);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalMarkFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_mark);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_arrival);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Finalize__Q2_2nn4bossFv", (void**)&boss_finalize);
 
     if (!z_compress || !boss_init || !boss_post_news_pids) {
@@ -374,6 +393,21 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     if (boss_set_new_arrival) {
         uint32_t arr_ret = boss_set_new_arrival(&target_pid, 1);
         PluginLog("[Plugin] SetNewArrivalFlag(0x%08X, 1) -> 0x%08X", target_pid, arr_ret);
+    }
+
+    if (boss_almighty_ctor && boss_almighty_set_mark) {
+        uint8_t almighty_buf[32] __attribute__((aligned(8)));
+        memset(almighty_buf, 0, sizeof(almighty_buf));
+        uint64_t notif_title_id = 0x000500101004D200ULL;
+        boss_almighty_ctor(almighty_buf, target_pid, &notif_title_id);
+        boss_almighty_set_mark(almighty_buf, 1);
+        if (boss_almighty_set_arrival) {
+            boss_almighty_set_arrival(almighty_buf, 1);
+        }
+        if (boss_almighty_dtor) {
+            boss_almighty_dtor(almighty_buf);
+        }
+        PluginLog("[Plugin] AlmightyTitle mark & arrival set for PID 0x%08X", target_pid);
     }
 
     if (boss_finalize) {
@@ -479,6 +513,77 @@ static void HandleTcpClient(int client_fd) {
     send(client_fd, reply, strlen(reply), 0);
 }
 
+static void OnAutonomousChanged(ConfigItemBoolean *item, bool newValue) {
+    s_config.enable_autonomous = newValue;
+    WUPSStorageAPI_StoreBool(nullptr, "enable_autonomous", newValue);
+    PluginLog("[Plugin] Config: enable_autonomous = %d", (int)newValue);
+}
+
+static void OnLedChanged(ConfigItemBoolean *item, bool newValue) {
+    s_config.enable_led = newValue;
+    WUPSStorageAPI_StoreBool(nullptr, "enable_led", newValue);
+    PluginLog("[Plugin] Config: enable_led = %d", (int)newValue);
+}
+
+static void OnOverlayChanged(ConfigItemBoolean *item, bool newValue) {
+    s_config.enable_screen_overlay = newValue;
+    WUPSStorageAPI_StoreBool(nullptr, "enable_screen_overlay", newValue);
+    PluginLog("[Plugin] Config: enable_screen_overlay = %d", (int)newValue);
+}
+
+static void OnTcpChanged(ConfigItemBoolean *item, bool newValue) {
+    s_config.enable_tcp = newValue;
+    WUPSStorageAPI_StoreBool(nullptr, "enable_tcp", newValue);
+    PluginLog("[Plugin] Config: enable_tcp = %d", (int)newValue);
+}
+
+static void OnIntervalChanged(ConfigItemMultipleValues *item, uint32_t val) {
+    s_config.poll_interval_sec = val;
+    WUPSStorageAPI_StoreU32(nullptr, "poll_interval_sec", val);
+    PluginLog("[Plugin] Config: poll_interval_sec = %u", val);
+}
+
+static const ConfigItemMultipleValuesPair s_interval_pairs[] = {
+    { 30, "30 seconds (Active Test)" },
+    { 60, "1 minute" },
+    { 300, "5 minutes (SpotPass Default)" },
+    { 900, "15 minutes" },
+    { 1800, "30 minutes" },
+    { 3600, "1 hour" }
+};
+
+static WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle root) {
+    WUPSConfigItemBoolean_AddToCategory(root, "enable_autonomous", "Autonomous Delivery (Zero-PC)", true, s_config.enable_autonomous, OnAutonomousChanged);
+    WUPSConfigItemBoolean_AddToCategory(root, "enable_led", "GamePad Notification LED", true, s_config.enable_led, OnLedChanged);
+    WUPSConfigItemBoolean_AddToCategory(root, "enable_overlay", "On-Screen Toast Overlay", false, s_config.enable_screen_overlay, OnOverlayChanged);
+    WUPSConfigItemBoolean_AddToCategory(root, "enable_tcp", "PC Network Receiver (Port 7331)", true, s_config.enable_tcp, OnTcpChanged);
+
+    int cur_idx = 0; // 30s default
+    for (int i = 0; i < (int)(sizeof(s_interval_pairs) / sizeof(s_interval_pairs[0])); i++) {
+        if (s_interval_pairs[i].value == s_config.poll_interval_sec) {
+            cur_idx = i;
+            break;
+        }
+    }
+
+    WUPSConfigItemMultipleValues_AddToCategory(
+        root,
+        "poll_interval",
+        "Delivery / Check Interval",
+        0,
+        cur_idx,
+        (ConfigItemMultipleValuesPair*)s_interval_pairs,
+        sizeof(s_interval_pairs) / sizeof(s_interval_pairs[0]),
+        OnIntervalChanged
+    );
+
+    return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
+}
+
+static void ConfigMenuClosedCallback() {
+    WUPSStorageAPI_SaveStorage(false);
+}
+
 static int WorkerThreadMain(int argc, const char **argv) {
     // Wait briefly after title boot, checking s_plugin_running every 100ms
     for (int i = 0; i < NOTIFY_BOOT_DELAY_SEC * 10 && s_plugin_running; i++) {
@@ -489,29 +594,35 @@ static int WorkerThreadMain(int argc, const char **argv) {
     DrcLed_Init();
     Feed_Init(NOTIFY_SD_DIR);
 
-    // Open TCP listener on port 7331 for instant desktop push
-    s_server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (s_server_fd >= 0) {
-        int enable = 1;
-        setsockopt(s_server_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
-        struct sockaddr_in addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port = htons(PLUGIN_TCP_PORT);
-        if (bind(s_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0 ||
-            listen(s_server_fd, 4) < 0) {
-            close(s_server_fd);
-            s_server_fd = -1;
+    // Open TCP listener on port 7331 if enabled
+    if (s_config.enable_tcp) {
+        s_server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (s_server_fd >= 0) {
+            int enable = 1;
+            setsockopt(s_server_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = INADDR_ANY;
+            addr.sin_port = htons(PLUGIN_TCP_PORT);
+            if (bind(s_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0 ||
+                listen(s_server_fd, 4) < 0) {
+                close(s_server_fd);
+                s_server_fd = -1;
+            }
         }
     }
 
     uint32_t ticks_since_poll = s_config.poll_interval_sec * 4; // Poll immediately on start
 
     while (s_plugin_running) {
-        // 1. Poll SD feed.json every poll_interval_sec (5 mins)
-        if (ticks_since_poll >= s_config.poll_interval_sec * 4) {
+        uint32_t target_ticks = s_config.poll_interval_sec * 4;
+        if (target_ticks == 0) target_ticks = 120; // 30s safety fallback
+
+        if (ticks_since_poll >= target_ticks) {
             ticks_since_poll = 0;
+
+            // 1. Check SD card feed.json if present
             NotificationFeed feed;
             if (Feed_LoadFromSD(&feed)) {
                 for (uint32_t i = 0; i < feed.count && s_plugin_running; i++) {
@@ -532,9 +643,30 @@ static int WorkerThreadMain(int argc, const char **argv) {
                     }
                 }
             }
+
+            // 2. Autonomous on-console delivery (Zero-PC Mode)
+            if (s_config.enable_autonomous && s_plugin_running) {
+                CommunityNotification auto_item;
+                if (Feed_GetNextAutonomous(&auto_item)) {
+                    char xml[1536];
+                    FormatSpotPassXml(xml, sizeof(xml), auto_item.title, auto_item.message, auto_item.app, auto_item.feeling);
+                    char status[128];
+                    bool ok = PostOfficialNotification(xml, status, sizeof(status));
+                    PluginLog("[Plugin] Autonomous Delivery: '%s' (app=%s) -> %s", auto_item.title, auto_item.app, status);
+                    if (ok) {
+                        if (s_config.enable_led && auto_item.priority > 0) {
+                            DrcLed_TurnOn(1);
+                        }
+                        if (s_config.enable_history_log) {
+                            Feed_AppendHistory(&auto_item);
+                        }
+                        Feed_MarkSeen(auto_item.id);
+                    }
+                }
+            }
         }
 
-        // 2. Check TCP listener with 250ms timeout so thread exits rapidly on title switch
+        // 3. Check TCP listener with 250ms timeout if enabled
         if (s_server_fd >= 0) {
             fd_set read_fds;
             FD_ZERO(&read_fds);
@@ -583,6 +715,17 @@ INITIALIZE_PLUGIN() {
     Config_SetDefaults(&s_config);
     s_plugin_running = false;
     s_thread_active = false;
+
+    WUPSConfigAPIOptionsV1 configOptions = { .name = "Community Notifications" };
+    if (WUPSConfigAPI_Init(configOptions, ConfigMenuOpenedCallback, ConfigMenuClosedCallback) == WUPSCONFIG_API_RESULT_SUCCESS) {
+        WUPSStorageAPI_GetBool(nullptr, "enable_autonomous", &s_config.enable_autonomous);
+        WUPSStorageAPI_GetBool(nullptr, "enable_led", &s_config.enable_led);
+        WUPSStorageAPI_GetBool(nullptr, "enable_screen_overlay", &s_config.enable_screen_overlay);
+        WUPSStorageAPI_GetBool(nullptr, "enable_tcp", &s_config.enable_tcp);
+        WUPSStorageAPI_GetU32(nullptr, "poll_interval_sec", &s_config.poll_interval_sec);
+        PluginLog("[Plugin] Storage loaded: auto=%d, led=%d, tcp=%d, interval=%u",
+                  (int)s_config.enable_autonomous, (int)s_config.enable_led, (int)s_config.enable_tcp, s_config.poll_interval_sec);
+    }
 }
 
 ON_APPLICATION_START() {

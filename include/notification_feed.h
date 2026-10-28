@@ -57,6 +57,11 @@ bool Feed_MarkSeen(const char* id);
 bool Feed_AppendHistory(const CommunityNotification* item);
 
 /**
+ * Retrieves the next autonomous community bulletin from the built-in catalog rotation.
+ */
+bool Feed_GetNextAutonomous(CommunityNotification* out_item);
+
+/**
  * Reads feed from SD card storage directory.
  */
 bool Feed_LoadFromSD(NotificationFeed* out_feed);

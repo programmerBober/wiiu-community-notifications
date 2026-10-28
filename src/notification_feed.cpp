@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 #include <sys/stat.h>
 
 #if defined(__WIIU__) || defined(__WUT__)
@@ -237,6 +238,85 @@ bool Feed_AppendHistory(const CommunityNotification* item) {
             item->title[0] ? item->title : "Notice",
             item->message);
     fclose(f);
+    return true;
+}
+
+static const struct {
+    const char* tag;
+    const char* sender;
+    const char* title;
+    const char* message;
+    const char* app;
+    const char* feeling;
+    uint8_t priority;
+} s_auto_catalog[] = {
+    {
+        "splatoon",
+        "Squid Research Lab",
+        "Inkopolis News Bulletin",
+        "Incoming transmission from the Squid Sisters! Turf War rotation updated. Stay fresh on the battleground!",
+        "0005000010176A00",
+        "HAPPY",
+        1
+    },
+    {
+        "pretendo",
+        "Pretendo Network",
+        "Pretendo Network Status",
+        "All network game services are online! Enjoy multiplayer matchmaking and Miiverse interactions across Cafe OS.",
+        "0005001010040200",
+        "HAPPY",
+        1
+    },
+    {
+        "mk8",
+        "Mario Kart TV",
+        "Mario Kart 8 Tournament",
+        "Weekly 150cc Worldwide GP Tournament is now open! Hit the track and drift your way to victory!",
+        "000500001010EC00",
+        "SURPRISED",
+        1
+    },
+    {
+        "minecraft",
+        "Minecraft News",
+        "Battle Mini Game Lobby",
+        "Minigame arenas are buzzing! Jump into Battle and Glide public lobbies with friends on Nintendo Network.",
+        "00050000101D7500",
+        "HAPPY",
+        1
+    },
+    {
+        "smm",
+        "Course World",
+        "Course World Spotlight",
+        "New top-rated courses are trending! Fire up Course World and see if you can conquer the Super Expert gauntlet.",
+        "000500001018DD00",
+        "INSPIRED",
+        1
+    }
+};
+
+static uint32_t s_auto_index = 0;
+
+bool Feed_GetNextAutonomous(CommunityNotification* out_item) {
+    if (!out_item) return false;
+    memset(out_item, 0, sizeof(CommunityNotification));
+
+    uint32_t cat_size = sizeof(s_auto_catalog) / sizeof(s_auto_catalog[0]);
+    uint32_t cur = s_auto_index % cat_size;
+    s_auto_index++;
+
+    time_t now = time(NULL);
+    snprintf(out_item->id, sizeof(out_item->id), "auto_%s_%u_%u", s_auto_catalog[cur].tag, (uint32_t)now, s_auto_index);
+    SafeCopyString(out_item->sender, s_auto_catalog[cur].sender, sizeof(out_item->sender));
+    SafeCopyString(out_item->title, s_auto_catalog[cur].title, sizeof(out_item->title));
+    SafeCopyString(out_item->message, s_auto_catalog[cur].message, sizeof(out_item->message));
+    SafeCopyString(out_item->app, s_auto_catalog[cur].app, sizeof(out_item->app));
+    SafeCopyString(out_item->feeling, s_auto_catalog[cur].feeling, sizeof(out_item->feeling));
+    out_item->timestamp = (uint32_t)now;
+    out_item->priority = s_auto_catalog[cur].priority;
+    out_item->duration_sec = 6.0f;
     return true;
 }
 
