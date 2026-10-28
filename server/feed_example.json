@@ -2,31 +2,76 @@
   "version": 1,
   "notifications": [
     {
-      "id": "pretendo-splatfest-2026-10",
-      "sender": "Pretendo Network",
+      "id": "splatfest-cats-dogs",
+      "type": "game",
+      "sender": "Squid Research Lab",
       "title": "Splatfest: Cats vs Dogs!",
       "message": "Inkopolis Plaza is bustling! Choose your team at the pledge box and prepare for battle this weekend.",
+      "app": "0005000010176A00",
+      "feeling": "HAPPY",
       "timestamp": 1793134800,
       "priority": 1,
       "duration": 8.0
     },
     {
-      "id": "smm-course-spotlight-042",
-      "sender": "Mario Maker World",
-      "title": "Featured Course: Starry Heights",
-      "message": "Course by @LuigiFan: 'Starry Heights Galaxy' is trending with 98% clears. Jump in and try it!",
+      "id": "smm-course-record",
+      "type": "achievement",
+      "sender": "Course World",
+      "title": "World Record Broken!",
+      "message": "Course by @BuilderMario: 'Bowsers Fiery Domain' world record broken with 0:42.190! Jump in and try it!",
+      "app": "00050000101B4300",
+      "feeling": "LIKE",
       "timestamp": 1793138400,
-      "priority": 0,
+      "priority": 1,
       "duration": 6.5
     },
     {
-      "id": "community-friday-game-night",
-      "sender": "Wii U Community",
+      "id": "kart8-weekly-gp",
+      "type": "game",
+      "sender": "Mario Kart TV",
       "title": "Friday Kart 8 Grand Prix!",
       "message": "Join the 150cc Community Tournament tonight at 8:00 PM UTC. Tournament code: 4421-9902.",
+      "app": "0005000010149100",
+      "feeling": "HAPPY",
       "timestamp": 1793142000,
       "priority": 1,
       "duration": 7.5
+    },
+    {
+      "id": "zelda-tingle-letter",
+      "type": "community",
+      "sender": "Tingle Bottle",
+      "title": "Letter from the Great Sea",
+      "message": "You washed a Tingle Bottle ashore containing a sea photograph and Miiverse message from a fellow voyager!",
+      "app": "0005000010142700",
+      "feeling": "LIKE",
+      "timestamp": 1793145600,
+      "priority": 1,
+      "duration": 7.0
+    },
+    {
+      "id": "minecraft-friend-lobby",
+      "type": "friend",
+      "sender": "Minecraft News",
+      "title": "Friend Lobby: Battle Arena",
+      "message": "Your friend opened an 8-player Battle Minigame lobby in the Cavern map! Join now from the pause menu.",
+      "app": "00050000101D7500",
+      "feeling": "HAPPY",
+      "timestamp": 1793149200,
+      "priority": 1,
+      "duration": 7.0
+    },
+    {
+      "id": "pretendo-maintenance-alert",
+      "type": "maintenance",
+      "sender": "Pretendo Network",
+      "title": "Scheduled Server Maintenance",
+      "message": "Pretendo backend services will undergo maintenance on Sunday from 02:00 to 03:00 UTC. Matchmaking may pause.",
+      "app": "000500101004D200",
+      "feeling": "PUZZLED",
+      "timestamp": 1793152800,
+      "priority": 2,
+      "duration": 8.0
     }
   ]
 }

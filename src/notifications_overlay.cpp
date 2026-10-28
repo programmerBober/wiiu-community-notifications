@@ -83,6 +83,15 @@ bool Overlay_ShowToast(const char* title,
         case NOTIFY_STYLE_WARNING_AMBER:
             bgColor = (NMColor){ 230, 140, 20, 240 };
             break;
+        case NOTIFY_STYLE_SUCCESS_GREEN:
+            bgColor = (NMColor){ 40, 180, 70, 240 };
+            break;
+        case NOTIFY_STYLE_PARTY_PURPLE:
+            bgColor = (NMColor){ 145, 60, 210, 240 };
+            break;
+        case NOTIFY_STYLE_CRITICAL_RED:
+            bgColor = (NMColor){ 220, 45, 45, 245 };
+            break;
         default:
             bgColor = (NMColor){ WIIU_BLUE_R, WIIU_BLUE_G, WIIU_BLUE_B, WIIU_BLUE_A };
             break;
@@ -105,8 +114,11 @@ bool Overlay_ShowToast(const char* title,
     return (status == NOTIFICATION_MODULE_RESULT_SUCCESS);
 #else
     const char* color_ansi = "\033[1;36m"; // Cyan
-    if (style == NOTIFY_STYLE_WARNING_AMBER) color_ansi = "\033[1;33m";
-    else if (style == NOTIFY_STYLE_DARK_ELEGANT) color_ansi = "\033[1;34m";
+    if (style == NOTIFY_STYLE_WARNING_AMBER) color_ansi = "\033[1;33m";      // Yellow
+    else if (style == NOTIFY_STYLE_DARK_ELEGANT) color_ansi = "\033[1;34m";  // Blue
+    else if (style == NOTIFY_STYLE_SUCCESS_GREEN) color_ansi = "\033[1;32m"; // Green
+    else if (style == NOTIFY_STYLE_PARTY_PURPLE) color_ansi = "\033[1;35m";  // Magenta/Purple
+    else if (style == NOTIFY_STYLE_CRITICAL_RED) color_ansi = "\033[1;31m";  // Red
 
     printf("\n%s┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\033[0m\n", color_ansi);
     printf("%s┃  [Wii U Notification Toast]                         ┃\033[0m\n", color_ansi);

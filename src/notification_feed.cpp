@@ -174,6 +174,13 @@ bool Feed_ParseJSON(const char* json_str, size_t length, NotificationFeed* out_f
         ExtractJsonStringValue("message", obj_buf, item->message, sizeof(item->message));
         ExtractJsonStringValue("app", obj_buf, item->app, sizeof(item->app));
         ExtractJsonStringValue("feeling", obj_buf, item->feeling, sizeof(item->feeling));
+        ExtractJsonStringValue("type", obj_buf, item->type_str, sizeof(item->type_str));
+        if (item->type_str[0] != '\0') {
+            item->type = Feed_ParseTypeString(item->type_str);
+        } else {
+            item->type = NOTIFY_TYPE_GAME_EVENT;
+            SafeCopyString(item->type_str, Feed_GetTypeString(item->type), sizeof(item->type_str));
+        }
         if (item->feeling[0] == '\0') {
             SafeCopyString(item->feeling, "HAPPY", sizeof(item->feeling));
         }
@@ -247,8 +254,42 @@ bool Feed_AppendHistory(const CommunityNotification* item) {
     return true;
 }
 
+const char* Feed_GetTypeString(NotificationType type) {
+    switch (type) {
+        case NOTIFY_TYPE_GAME_EVENT:    return "game";
+        case NOTIFY_TYPE_MAINTENANCE:   return "maintenance";
+        case NOTIFY_TYPE_COMMUNITY:     return "community";
+        case NOTIFY_TYPE_FRIEND_INVITE: return "friend";
+        case NOTIFY_TYPE_ACHIEVEMENT:   return "achievement";
+        case NOTIFY_TYPE_SYSTEM_UPDATE: return "system";
+        default:                        return "game";
+    }
+}
+
+NotificationType Feed_ParseTypeString(const char* str) {
+    if (!str || str[0] == '\0') return NOTIFY_TYPE_GAME_EVENT;
+    if (strcasecmp(str, "maintenance") == 0 || strcasecmp(str, "alert") == 0 || strcasecmp(str, "outage") == 0) {
+        return NOTIFY_TYPE_MAINTENANCE;
+    }
+    if (strcasecmp(str, "community") == 0 || strcasecmp(str, "miiverse") == 0 || strcasecmp(str, "juxtaposition") == 0) {
+        return NOTIFY_TYPE_COMMUNITY;
+    }
+    if (strcasecmp(str, "friend") == 0 || strcasecmp(str, "invite") == 0 || strcasecmp(str, "party") == 0) {
+        return NOTIFY_TYPE_FRIEND_INVITE;
+    }
+    if (strcasecmp(str, "achievement") == 0 || strcasecmp(str, "record") == 0 || strcasecmp(str, "milestone") == 0) {
+        return NOTIFY_TYPE_ACHIEVEMENT;
+    }
+    if (strcasecmp(str, "system") == 0 || strcasecmp(str, "update") == 0 || strcasecmp(str, "aroma") == 0) {
+        return NOTIFY_TYPE_SYSTEM_UPDATE;
+    }
+    return NOTIFY_TYPE_GAME_EVENT;
+}
+
 static const struct {
     const char* tag;
+    NotificationType type;
+    const char* type_str;
     const char* sender;
     const char* title;
     const char* message;
@@ -258,6 +299,8 @@ static const struct {
 } s_auto_catalog[] = {
     {
         "splatoon",
+        NOTIFY_TYPE_GAME_EVENT,
+        "game",
         "Squid Research Lab",
         "Splatoon - Inkopolis News",
         "Splatfest announcement: Team Cats vs Team Dogs is live! Head to Inkopolis Plaza to claim your tee!",
@@ -266,25 +309,75 @@ static const struct {
         1
     },
     {
+        "mariokart8",
+        NOTIFY_TYPE_GAME_EVENT,
+        "game",
+        "Mario Kart TV",
+        "150cc Mushroom Cup Tournament",
+        "Pretendo Weekly Grand Prix is open! Hit the track with 150cc karts and set your best time trial records!",
+        "0005000010149100",
+        "HAPPY",
+        1
+    },
+    {
+        "smash",
+        NOTIFY_TYPE_GAME_EVENT,
+        "game",
+        "Smash Bros. Arena",
+        "For Glory - 1-on-1 Tournament",
+        "Challengers approaching! Online For Glory bracket has commenced on Final Destination. Settle it in Smash!",
+        "00050000101C6300",
+        "SURPRISED",
+        1
+    },
+    {
+        "smm_course",
+        NOTIFY_TYPE_ACHIEVEMENT,
+        "achievement",
+        "Course World",
+        "Trending Course: Bowsers Keep",
+        "A new Expert course by @BuilderMario is trending in the Course World with 450+ clears! Jump in and try it!",
+        "00050000101B4300",
+        "LIKE",
+        1
+    },
+    {
+        "zelda_tingle",
+        NOTIFY_TYPE_COMMUNITY,
+        "community",
+        "Tingle Bottle",
+        "Letter from the Great Sea",
+        "You washed a Tingle Bottle ashore containing a sea photograph and Miiverse message from a fellow voyager!",
+        "0005000010142700",
+        "LIKE",
+        1
+    },
+    {
+        "nsmbu",
+        NOTIFY_TYPE_GAME_EVENT,
+        "game",
+        "Toad House",
+        "Coin Battle Challenge",
+        "Boost Mode challenges and 4-player Coin Battle records are open across Acorn Plains! Grab your GamePad!",
+        "0005000010105700",
+        "HAPPY",
+        1
+    },
+    {
         "minecraft",
+        NOTIFY_TYPE_FRIEND_INVITE,
+        "friend",
         "Minecraft News",
         "Battle Mini Game - Arena Open!",
-        "Join your friends on Nintendo Network in the Medieval arena! Battle and Glide lobbies are open.",
+        "Join your friends on Pretendo Network in the Medieval arena! Battle and Glide lobbies are open.",
         "00050000101D7500",
         "HAPPY",
         1
     },
     {
-        "isaac",
-        "The Binding of Isaac",
-        "Daily Seeded Run Available",
-        "Today's seeded challenge is live! Descend into the Basement and fight for the top of the leaderboards!",
-        "00050000101C9B00",
-        "SURPRISED",
-        1
-    },
-    {
         "fast_racing",
+        NOTIFY_TYPE_ACHIEVEMENT,
+        "achievement",
         "FAST Racing NEO",
         "Subsonic League Cup Open",
         "Switch your phase colors, hit supersonic boost pads, and set a new lap record on the tracks!",
@@ -294,6 +387,8 @@ static const struct {
     },
     {
         "starfox",
+        NOTIFY_TYPE_GAME_EVENT,
+        "game",
         "Star Fox Zero",
         "Corneria Defense Alert",
         "General Pepper to Star Fox: Enemy forces detected near Sector Beta! Scramble your Arwings immediately!",
@@ -302,11 +397,35 @@ static const struct {
         1
     },
     {
-        "pretendo",
-        "Pretendo Network",
-        "Pretendo Network Status",
-        "All network game services are online! Enjoy multiplayer matchmaking and Miiverse interactions across Cafe OS.",
+        "isaac",
+        NOTIFY_TYPE_GAME_EVENT,
+        "game",
+        "The Binding of Isaac",
+        "Daily Seeded Run Available",
+        "Today's seeded challenge is live! Descend into the Basement and fight for the top of the leaderboards!",
+        "00050000101C9B00",
+        "SURPRISED",
+        1
+    },
+    {
+        "pretendo_community",
+        NOTIFY_TYPE_COMMUNITY,
+        "community",
+        "Juxtaposition",
+        "Trending Miiverse Post",
+        "Your favorite community has new drawings and game tips! Open Juxtaposition to give Yeahs and share replies.",
         "0005001010040200",
+        "HAPPY",
+        1
+    },
+    {
+        "pretendo_maintenance",
+        NOTIFY_TYPE_MAINTENANCE,
+        "maintenance",
+        "Pretendo Network",
+        "Online Services Status: OK",
+        "All game matchmaking servers, Juxtaposition, and account authentication systems are operating normally.",
+        "000500101004D200",
         "HAPPY",
         1
     }
@@ -331,6 +450,8 @@ bool Feed_GetNextAutonomous(CommunityNotification* out_item) {
             SafeCopyString(out_item->message, s_auto_catalog[cur].message, sizeof(out_item->message));
             SafeCopyString(out_item->app, s_auto_catalog[cur].app, sizeof(out_item->app));
             SafeCopyString(out_item->feeling, s_auto_catalog[cur].feeling, sizeof(out_item->feeling));
+            out_item->type = s_auto_catalog[cur].type;
+            SafeCopyString(out_item->type_str, s_auto_catalog[cur].type_str, sizeof(out_item->type_str));
             out_item->timestamp = (uint32_t)time(NULL);
             out_item->priority = s_auto_catalog[cur].priority;
             out_item->duration_sec = 6.0f;

@@ -13,6 +13,15 @@ extern "C" {
 #define MAX_NOTIFY_TITLE_LEN   64
 #define MAX_NOTIFY_ID_LEN      64
 
+typedef enum {
+    NOTIFY_TYPE_GAME_EVENT    = 0, // Splatfests, tournaments, challenge seeds, boss raids
+    NOTIFY_TYPE_MAINTENANCE   = 1, // Pretendo server status, downtime, security alerts
+    NOTIFY_TYPE_COMMUNITY     = 2, // Juxtaposition/Miiverse drawings, plaza trends, forum news
+    NOTIFY_TYPE_FRIEND_INVITE = 3, // Friend online, lobby open, game invitations
+    NOTIFY_TYPE_ACHIEVEMENT   = 4, // High scores, course clear records, speedrun milestones
+    NOTIFY_TYPE_SYSTEM_UPDATE = 5  // Aroma environment, plugin updates, firmware patches
+} NotificationType;
+
 typedef struct {
     char id[MAX_NOTIFY_ID_LEN];
     char sender[MAX_NOTIFY_TITLE_LEN];
@@ -20,8 +29,10 @@ typedef struct {
     char message[MAX_NOTIFY_TEXT_LEN];
     char app[32];
     char feeling[32];
+    char type_str[24];
+    NotificationType type;
     uint32_t timestamp;
-    uint8_t priority;     // 0 = standard, 1 = high (triggers LED + sound)
+    uint8_t priority;     // 0 = standard, 1 = normal, 2 = urgent/high
     float duration_sec;
 } CommunityNotification;
 
@@ -65,6 +76,16 @@ bool Feed_GetNextAutonomous(CommunityNotification* out_item);
  * Reads feed from SD card storage directory.
  */
 bool Feed_LoadFromSD(NotificationFeed* out_feed);
+
+/**
+ * Returns human-readable label for a notification type.
+ */
+const char* Feed_GetTypeString(NotificationType type);
+
+/**
+ * Parses type string into NotificationType enum.
+ */
+NotificationType Feed_ParseTypeString(const char* str);
 
 /**
  * Cleans up feed subsystem.

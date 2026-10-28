@@ -440,6 +440,7 @@ static void HandleTcpClient(int client_fd) {
     char body[512] = "New notification received.";
     char app[32] = "";
     char feeling[32] = "HAPPY";
+    char type_str[32] = "game";
 
     // Fast-path commands
     if (strstr(buf, "\"cmd\":\"led_off\"") || strstr(buf, "\"cmd\": \"led_off\"")) {
@@ -522,6 +523,21 @@ static void HandleTcpClient(int client_fd) {
         }
     }
 
+    char* tp_pos = strstr(buf, "\"type\":");
+    if (tp_pos) {
+        char* q1 = strchr(tp_pos + 7, '\"');
+        if (q1) {
+            char* q2 = strchr(q1 + 1, '\"');
+            if (q2) {
+                size_t l = (size_t)(q2 - (q1 + 1));
+                if (l > sizeof(type_str) - 1) l = sizeof(type_str) - 1;
+                strncpy(type_str, q1 + 1, l);
+                type_str[l] = '\0';
+            }
+        }
+    }
+    NotificationType ntype = Feed_ParseTypeString(type_str);
+
     char xml[1536];
     if (strncmp(buf, "<?xml", 5) == 0) {
         // Raw XML passthrough (debugging custom message layouts from the PC)
@@ -536,6 +552,16 @@ static void HandleTcpClient(int client_fd) {
     if (ok && s_config.enable_led) {
         DrcLed_TurnOn(1);
         s_led_active_ticks = (s_config.led_duration_sec > 0 ? s_config.led_duration_sec : 10) * 4;
+    }
+
+    if (ok && s_config.enable_screen_overlay) {
+        NotificationStyle style = NOTIFY_STYLE_SPOTPASS_BLUE;
+        if (ntype == NOTIFY_TYPE_MAINTENANCE) style = NOTIFY_STYLE_CRITICAL_RED;
+        else if (ntype == NOTIFY_TYPE_COMMUNITY) style = NOTIFY_STYLE_DARK_ELEGANT;
+        else if (ntype == NOTIFY_TYPE_FRIEND_INVITE) style = NOTIFY_STYLE_PARTY_PURPLE;
+        else if (ntype == NOTIFY_TYPE_ACHIEVEMENT) style = NOTIFY_STYLE_SUCCESS_GREEN;
+        else if (ntype == NOTIFY_TYPE_SYSTEM_UPDATE) style = NOTIFY_STYLE_WARNING_AMBER;
+        Overlay_ShowToast(title, body, 7.0f, style);
     }
 
     char reply[160];
@@ -725,6 +751,7 @@ static int WorkerThreadMain(int argc, const char **argv) {
 
     DrcLed_Init();
     Feed_Init(NOTIFY_SD_DIR);
+    Overlay_Init();
 
     // Open TCP listener on port 7331 if enabled
     if (s_config.enable_tcp) {
@@ -771,6 +798,15 @@ static int WorkerThreadMain(int argc, const char **argv) {
                             if (s_config.enable_history_log) {
                                 Feed_AppendHistory(item);
                             }
+                            if (s_config.enable_screen_overlay) {
+                                NotificationStyle style = NOTIFY_STYLE_SPOTPASS_BLUE;
+                                if (item->type == NOTIFY_TYPE_MAINTENANCE) style = NOTIFY_STYLE_CRITICAL_RED;
+                                else if (item->type == NOTIFY_TYPE_COMMUNITY) style = NOTIFY_STYLE_DARK_ELEGANT;
+                                else if (item->type == NOTIFY_TYPE_FRIEND_INVITE) style = NOTIFY_STYLE_PARTY_PURPLE;
+                                else if (item->type == NOTIFY_TYPE_ACHIEVEMENT) style = NOTIFY_STYLE_SUCCESS_GREEN;
+                                else if (item->type == NOTIFY_TYPE_SYSTEM_UPDATE) style = NOTIFY_STYLE_WARNING_AMBER;
+                                Overlay_ShowToast(item->title, item->message, item->duration_sec > 0 ? item->duration_sec : 6.0f, style);
+                            }
                             Feed_MarkSeen(item->id);
                         }
                     }
@@ -793,6 +829,15 @@ static int WorkerThreadMain(int argc, const char **argv) {
                         }
                         if (s_config.enable_history_log) {
                             Feed_AppendHistory(&auto_item);
+                        }
+                        if (s_config.enable_screen_overlay) {
+                            NotificationStyle style = NOTIFY_STYLE_SPOTPASS_BLUE;
+                            if (auto_item.type == NOTIFY_TYPE_MAINTENANCE) style = NOTIFY_STYLE_CRITICAL_RED;
+                            else if (auto_item.type == NOTIFY_TYPE_COMMUNITY) style = NOTIFY_STYLE_DARK_ELEGANT;
+                            else if (auto_item.type == NOTIFY_TYPE_FRIEND_INVITE) style = NOTIFY_STYLE_PARTY_PURPLE;
+                            else if (auto_item.type == NOTIFY_TYPE_ACHIEVEMENT) style = NOTIFY_STYLE_SUCCESS_GREEN;
+                            else if (auto_item.type == NOTIFY_TYPE_SYSTEM_UPDATE) style = NOTIFY_STYLE_WARNING_AMBER;
+                            Overlay_ShowToast(auto_item.title, auto_item.message, 6.0f, style);
                         }
                         Feed_MarkSeen(auto_item.id);
                     }
@@ -854,6 +899,7 @@ static int WorkerThreadMain(int argc, const char **argv) {
     }
     Feed_Shutdown();
     DrcLed_Shutdown();
+    Overlay_Shutdown();
     return 0;
 }
 

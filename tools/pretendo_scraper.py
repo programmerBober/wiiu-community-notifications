@@ -75,22 +75,41 @@ def infer_game_and_feeling(title, body):
             app = tid
             break
 
-    # Determine Mii feeling
+    # Determine notification category type, Mii feeling, and priority
     feeling = "HAPPY"
     priority = 1
+    notif_type = "game"
+
     if any(k in combined for k in ["breach", "alert", "security", "exploit", "compromise"]):
         feeling = "SURPRISED"
         priority = 2
+        notif_type = "maintenance"
     elif any(k in combined for k in ["maintenance", "down", "offline", "outage", "issue", "bug"]):
         feeling = "PUZZLED"
         priority = 2
-    elif any(k in combined for k in ["release", "celebrate", "congrat", "splatfest", "fest", "guide"]):
+        notif_type = "maintenance"
+    elif any(k in combined for k in ["juxtaposition", "miiverse", "drawing", "yeah", "post"]):
+        feeling = "LIKE"
+        priority = 1
+        notif_type = "community"
+    elif any(k in combined for k in ["lobby", "invite", "friends", "join", "party"]):
         feeling = "HAPPY"
         priority = 1
+        notif_type = "friend"
+    elif any(k in combined for k in ["record", "cleared", "high score", "ranked", "rank"]):
+        feeling = "LIKE"
+        priority = 1
+        notif_type = "achievement"
+    elif any(k in combined for k in ["update", "release", "patch", "version", "firmware"]):
+        feeling = "HAPPY"
+        priority = 1
+        notif_type = "system"
     elif any(k in combined for k in ["rule", "conduct", "terms", "policy"]):
         feeling = "NORMAL"
+        priority = 1
+        notif_type = "community"
 
-    return app, feeling, priority
+    return app, feeling, priority, notif_type
 
 def fetch_forum_announcements(limit=5):
     """Fetch recent topics from Discourse Announcements category (id: 9)."""
@@ -124,7 +143,7 @@ def fetch_forum_announcements(limit=5):
             except Exception as e:
                 body = clean_text(title)
 
-            app, feeling, priority = infer_game_and_feeling(title, body)
+            app, feeling, priority, notif_type = infer_game_and_feeling(title, body)
 
             clean_title = clean_text(title, max_len=60)
             items.append({
@@ -135,6 +154,7 @@ def fetch_forum_announcements(limit=5):
                 "app": app,
                 "feeling": feeling,
                 "priority": priority,
+                "type": notif_type,
                 "url": f"https://forum.pretendo.network/t/{topic.get('slug', tid)}/{tid}",
                 "timestamp": topic.get("created_at", "")
             })
@@ -162,7 +182,7 @@ def fetch_blog_feed(limit=3):
                 guid = item.findtext("guid", link)
                 clean_title = clean_text(title, max_len=60)
                 clean_body = clean_text(desc, max_len=450)
-                app, feeling, priority = infer_game_and_feeling(clean_title, clean_body)
+                app, feeling, priority, notif_type = infer_game_and_feeling(clean_title, clean_body)
 
                 # Generate a stable deterministic ID
                 safe_guid = re.sub(r"[^a-zA-Z0-9_]", "_", guid).strip("_")
@@ -174,6 +194,7 @@ def fetch_blog_feed(limit=3):
                     "app": app,
                     "feeling": feeling,
                     "priority": priority,
+                    "type": notif_type,
                     "url": link,
                     "timestamp": item.findtext("pubDate", "")
                 })
@@ -223,7 +244,8 @@ def push_tcp(ip, port, item):
         "title": item["title"],
         "body": item["body"],
         "app": item["app"],
-        "feeling": item["feeling"]
+        "feeling": item["feeling"],
+        "type": item.get("type", "game")
     }
     s.sendall(json.dumps(payload).encode("utf-8") + b"\n")
     resp = s.recv(512).decode("utf-8", errors="ignore").strip()
@@ -249,6 +271,7 @@ def push_sd_feed(ip, item):
         "message": item["body"],
         "app": item["app"],
         "feeling": item["feeling"],
+        "type": item.get("type", "game"),
         "timestamp": int(time.time()),
         "priority": item["priority"],
         "duration": 7.0
@@ -275,7 +298,7 @@ def sync_pretendo(ip=None, port=7331, method="inject", dry_run=False):
 
     for item in new_items:
         print(f"\n--- [{item['sender']}] {item['title']} ---")
-        print(f"    App: {item['app']} | Feeling: {item['feeling']} | Priority: {item['priority']}")
+        print(f"    Type: {item.get('type', 'game').upper()} | App: {item['app']} | Feeling: {item['feeling']} | Priority: {item['priority']}")
         print(f"    Body: {item['body'][:120]}...")
 
         if dry_run:
