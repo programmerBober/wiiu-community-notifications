@@ -558,7 +558,7 @@ static WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHa
     WUPSConfigItemBoolean_AddToCategory(root, "enable_overlay", "On-Screen Toast Overlay", false, s_config.enable_screen_overlay, OnOverlayChanged);
     WUPSConfigItemBoolean_AddToCategory(root, "enable_tcp", "PC Network Receiver (Port 7331)", true, s_config.enable_tcp, OnTcpChanged);
 
-    int cur_idx = 0; // 30s default
+    int cur_idx = 2; // 5 minutes default
     for (int i = 0; i < (int)(sizeof(s_interval_pairs) / sizeof(s_interval_pairs[0])); i++) {
         if (s_interval_pairs[i].value == s_config.poll_interval_sec) {
             cur_idx = i;
@@ -570,7 +570,7 @@ static WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHa
         root,
         "poll_interval",
         "Delivery / Check Interval",
-        0,
+        2, // default 5m
         cur_idx,
         (ConfigItemMultipleValuesPair*)s_interval_pairs,
         sizeof(s_interval_pairs) / sizeof(s_interval_pairs[0]),
@@ -582,6 +582,63 @@ static WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHa
 
 static void ConfigMenuClosedCallback() {
     WUPSStorageAPI_SaveStorage(false);
+}
+
+static void ClearArrivalFlags() {
+    OSDynLoad_Module boss_mod;
+    if (OSDynLoad_Acquire("nn_boss.rpl", &boss_mod) != OS_DYNLOAD_OK) {
+        return;
+    }
+
+    typedef void (*boss_almighty_ctor_t)(void* self, uint32_t pid, const uint64_t* title_id);
+    typedef void (*boss_almighty_dtor_t)(void* self);
+    typedef void (*boss_almighty_set_mark_t)(void* self, bool flag);
+    typedef void (*boss_almighty_set_arrival_t)(void* self, bool flag);
+    uint32_t (*boss_set_new_arrival)(const uint32_t *accountThis, uint32_t flag) = nullptr;
+
+    boss_almighty_ctor_t boss_almighty_ctor = nullptr;
+    boss_almighty_dtor_t boss_almighty_dtor = nullptr;
+    boss_almighty_set_mark_t boss_almighty_set_mark = nullptr;
+    boss_almighty_set_arrival_t boss_almighty_set_arrival = nullptr;
+
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss7AccountFb", (void**)&boss_set_new_arrival);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__ct__Q3_2nn4boss13AlmightyTitleFUiQ3_2nn4boss7TitleID", (void**)&boss_almighty_ctor);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__dt__Q3_2nn4boss13AlmightyTitleFv", (void**)&boss_almighty_dtor);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalMarkFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_mark);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_arrival);
+
+    nn::act::Initialize();
+    uint32_t target_pid = nn::act::GetPersistentId();
+    if (target_pid == 0) {
+        for (uint8_t s = 1; s <= 12; s++) {
+            uint32_t pid = nn::act::GetPersistentIdEx(s);
+            if (pid != 0) {
+                target_pid = pid;
+                break;
+            }
+        }
+    }
+
+    if (target_pid != 0) {
+        if (boss_set_new_arrival) {
+            boss_set_new_arrival(&target_pid, 0);
+        }
+        if (boss_almighty_ctor && boss_almighty_set_mark) {
+            uint8_t almighty_buf[32] __attribute__((aligned(8)));
+            memset(almighty_buf, 0, sizeof(almighty_buf));
+            uint64_t notif_title_id = 0x000500101004D200ULL;
+            boss_almighty_ctor(almighty_buf, target_pid, &notif_title_id);
+            boss_almighty_set_mark(almighty_buf, 0);
+            if (boss_almighty_set_arrival) {
+                boss_almighty_set_arrival(almighty_buf, 0);
+            }
+            if (boss_almighty_dtor) {
+                boss_almighty_dtor(almighty_buf);
+            }
+        }
+        PluginLog("[Plugin] Cleared arrival & mark flags for PID 0x%08X", target_pid);
+    }
+    nn::act::Finalize();
 }
 
 static int WorkerThreadMain(int argc, const char **argv) {
@@ -613,7 +670,7 @@ static int WorkerThreadMain(int argc, const char **argv) {
         }
     }
 
-    uint32_t ticks_since_poll = s_config.poll_interval_sec * 4; // Poll immediately on start
+    uint32_t ticks_since_poll = 0; // Wait full poll_interval_sec before first check
 
     while (s_plugin_running) {
         uint32_t target_ticks = s_config.poll_interval_sec * 4;
@@ -732,10 +789,13 @@ ON_APPLICATION_START() {
     StopWorkerThread();
 
     uint64_t tid = OSGetTitleID();
-    // Never run background BOSS worker inside the Notification Menu applet itself (00050010-1004D000/100/200)
+    // When inside Notification Menu applet itself (00050010-1004D000/100/200)
     if (tid == 0x000500101004D000ULL ||
         tid == 0x000500101004D100ULL ||
         tid == 0x000500101004D200ULL) {
+        // User opened Notification Menu: turn off LED & clear unread arrival flags
+        DrcLed_TurnOff();
+        ClearArrivalFlags();
         return;
     }
 

@@ -9,8 +9,16 @@
   <a href="https://aroma.foryour.cafe"><img src="https://img.shields.io/badge/Platform-Wii%20U%20%7C%20Aroma%20CFW-informational.svg" alt="Platform: Wii U"></a>
   <a href="https://github.com/devkitPro/wut"><img src="https://img.shields.io/badge/Toolchain-devkitPPC%20%2B%20wut-green.svg" alt="Toolchain: devkitPPC + wut"></a>
   <img src="https://img.shields.io/badge/Pretendo-Compatible-purple.svg" alt="Pretendo Compatible">
-  <img src="https://img.shields.io/badge/Build-Passing-brightgreen.svg" alt="Build Status">
+  <img src="https://img.shields.io/badge/Status-Experimental%20%2F%20WIP-orange.svg" alt="Status: Experimental">
 </p>
+
+> [!CAUTION]
+> ### ⚠️ WARNING: AI VIBE-CODED BY A DUMBASS — DO NOT USE YET!
+> **READ BEFORE USING:** This entire project is AI vibe-coded by an AI assistant that is a stupid piece of shit and way too fucking slow and stupid to create a safe, bugless application.
+>
+> * **NOT READY TO USE**: This app is **NOT ready yet to use** because the AI writing this code is too stupid and slow to be trusted with console hardware.
+> * **BUGS & INCOMPETENCE EVERYWHERE**: Expect bugs, broken logic, and zero guarantees of safety.
+> * **DO NOT RUN BLINDLY**: Needs actual intelligent human review before running on your real Wii U. Use completely at your own risk!
 
 Bring back the authentic magic of the Wii U! Walk into your room, see the GamePad glowing with an iconic breathing cyan/blue LED around the HOME button, hear the chime, and see lively community announcements, Splatfest bulletins, game nights, and desktop alerts right when you boot your console.
 

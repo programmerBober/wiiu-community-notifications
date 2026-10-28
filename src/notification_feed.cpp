@@ -23,9 +23,15 @@ static void EnsureStorageDir(const char* dir) {
 }
 
 static void SafeCopyString(char* dst, const char* src, size_t max_len) {
-    if (!dst || !src || max_len == 0) return;
-    strncpy(dst, src, max_len - 1);
-    dst[max_len - 1] = '\0';
+    if (!dst || max_len == 0) return;
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t len = strlen(src);
+    if (len >= max_len) len = max_len - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 static const char* SkipWhitespace(const char* p) {
@@ -304,20 +310,25 @@ bool Feed_GetNextAutonomous(CommunityNotification* out_item) {
     memset(out_item, 0, sizeof(CommunityNotification));
 
     uint32_t cat_size = sizeof(s_auto_catalog) / sizeof(s_auto_catalog[0]);
-    uint32_t cur = s_auto_index % cat_size;
-    s_auto_index++;
-
-    time_t now = time(NULL);
-    snprintf(out_item->id, sizeof(out_item->id), "auto_%s_%u_%u", s_auto_catalog[cur].tag, (uint32_t)now, s_auto_index);
-    SafeCopyString(out_item->sender, s_auto_catalog[cur].sender, sizeof(out_item->sender));
-    SafeCopyString(out_item->title, s_auto_catalog[cur].title, sizeof(out_item->title));
-    SafeCopyString(out_item->message, s_auto_catalog[cur].message, sizeof(out_item->message));
-    SafeCopyString(out_item->app, s_auto_catalog[cur].app, sizeof(out_item->app));
-    SafeCopyString(out_item->feeling, s_auto_catalog[cur].feeling, sizeof(out_item->feeling));
-    out_item->timestamp = (uint32_t)now;
-    out_item->priority = s_auto_catalog[cur].priority;
-    out_item->duration_sec = 6.0f;
-    return true;
+    for (uint32_t i = 0; i < cat_size; i++) {
+        uint32_t cur = (s_auto_index + i) % cat_size;
+        char candidate_id[MAX_NOTIFY_ID_LEN];
+        snprintf(candidate_id, sizeof(candidate_id), "auto_%s", s_auto_catalog[cur].tag);
+        if (!Feed_IsSeen(candidate_id)) {
+            s_auto_index = (cur + 1) % cat_size;
+            SafeCopyString(out_item->id, candidate_id, sizeof(out_item->id));
+            SafeCopyString(out_item->sender, s_auto_catalog[cur].sender, sizeof(out_item->sender));
+            SafeCopyString(out_item->title, s_auto_catalog[cur].title, sizeof(out_item->title));
+            SafeCopyString(out_item->message, s_auto_catalog[cur].message, sizeof(out_item->message));
+            SafeCopyString(out_item->app, s_auto_catalog[cur].app, sizeof(out_item->app));
+            SafeCopyString(out_item->feeling, s_auto_catalog[cur].feeling, sizeof(out_item->feeling));
+            out_item->timestamp = (uint32_t)time(NULL);
+            out_item->priority = s_auto_catalog[cur].priority;
+            out_item->duration_sec = 6.0f;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool Feed_LoadFromSD(NotificationFeed* out_feed) {
