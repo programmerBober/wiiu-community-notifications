@@ -1,81 +1,131 @@
 # 🎮 Wii U Community Notification System (SpotPass Revived)
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Platform: Wii U / Aroma](https://img.shields.io/badge/Platform-Wii%20U%20%7C%20Aroma%20CFW-informational.svg)](https://aroma.foryour.cafe)
+[![Toolchain: devkitPPC & wut](https://img.shields.io/badge/Toolchain-devkitPPC%20%2B%20wut-green.svg)](https://github.com/devkitPro/wut)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)]()
+
 > [!WARNING]
-> **⚠️ VIBE CODED & EXPERIMENTAL — NOT READY FOR GENERAL USE**
+> **⚠️ VIBE CODED & EXPERIMENTAL — ACTIVE RESEARCH**
 >
-> This repository is an experimental, vibe-coded prototype exploring Wii U notification hooks, GamePad DRC LED patterns, and Aroma overlay rendering. It is currently in active research/early development and **not ready for daily end-user setups**. Use at your own discretion for testing and research purposes only.
+> This repository is an experimental prototype exploring Wii U SpotPass notification injection, GamePad DRC LED breathing patterns, and Aroma overlay rendering. It is in active research/early development and **not ready for daily end-user setups**. Use for testing and research purposes only.
 
-Bring back the authentic magic of the Wii U! Walk into your room, see the GamePad glowing with a breathing blue LED around the HOME button, hear the chime, and see lively community announcements, Splatfest bulletins, game nights, and server updates right as you boot your console.
-
----
-
-## 🔬 Research & System Architecture
-
-### 1. The Original Wii U Notification Feel
-* **GamePad Notification Ring**: In Cafe OS, background events (SpotPass, friends coming online) pulsed the blue DRC LED around the HOME button.
-* **On-Screen Popups**: Non-intrusive cyan/blue system toasts in the corner of the TV and GamePad.
-* **Notification Applet**: System Title ID `00050010-1004A000` (EUR) / `1004A100` (USA) loaded BOSS notifications.
-
-### 2. Verified Wii U Homebrew APIs
-* **Toast Overlays (`wiiu-env/libnotifications` & `NotificationModule`)**:
-  - Connects via `NotificationModule_InitLibrary()`.
-  - Pushes toasts using `NotificationModule_AddInfoNotificationEx()` with authentic Wii U cyan/blue styling (`RGBA: 0, 162, 232, 240`).
-  - Supports persistence (`keepUntilShown = true`) so notifications survive game transitions without being dropped.
-* **GamePad HOME Button LED (`nn::acp` & `nn::act`)**:
-  - Controlled natively via `<nn/acp/drcled_c.h>`:
-    ```c
-    uint32_t persistentId = nn::act::GetPersistentId();
-    ACPTurnOnDrcLed(persistentId, 1); // Pattern 1: Iconic breathing notification pulse
-    ACPTurnOffDrcLed();
-    ```
-* **Hardware Safety**:
-  - 100% RAM-only WUPS plugin.
-  - Zero modifications to NAND/MLC storage. State and history are stored strictly on SD card (`sd:/wiiu/notifications/`).
+Bring back the authentic magic of the Wii U! Walk into your room, see the GamePad glowing with an iconic breathing cyan/blue LED around the HOME button, hear the chime, and see lively community announcements, Splatfest bulletins, game nights, and desktop alerts right when you boot your console.
 
 ---
 
-## 🗺️ Project Roadmap
+## 🏛️ System Architecture
 
-- [x] **Milestone 1: Core Architecture & Prototype (Current)**
-  - Native host simulator & unit test suite with mock LED + toast renderer.
-  - JSON feed parser with defensive bounds checking.
-  - Seen-state deduplication (`last_seen.txt`) and notification history logger (`history.log`).
-  - WUPS plugin implementation hooks (`INITIALIZE_PLUGIN`, background `OSThread`).
-- [ ] **Milestone 2: Network Fetcher & WUPS Config Menu**
-  - Background HTTP client (`nsysnet` / `libcurl`) to fetch live JSON feeds from Pretendo / Community endpoints.
-  - In-game WUPS configuration menu (`L + D-Pad Down + Minus`) to toggle LED pulse, test notifications, and adjust poll intervals.
-- [ ] **Milestone 3: Standalone Notification Viewer Applet (.wuhb)**
-  - A nostalgic HOME menu companion applet replicating the original Wii U notification list UI to browse past announcements.
-- [ ] **Milestone 4: Pretendo Community Feed Integration**
-  - Dedicated public API feed syncing official Pretendo status, maintenance alerts, and game tournaments.
+```mermaid
+flowchart TD
+    subgraph Desktop [💻 Desktop / Server Bridge]
+        CLI["tools/wiiu_notify.py"]
+        PretendoAPI["Pretendo Incident API"]
+        DesktopAlerts["Desktop Push Alerts"]
+        CLI --> PretendoAPI
+        CLI --> DesktopAlerts
+    end
+
+    subgraph WiiU [🕹️ Wii U Console (Aroma CFW)]
+        TCP["TCP Listener (:7331)"]
+        TestApp["NotifyTest (.wuhb)"]
+        Plugin["CommunityNotifications (.wps)"]
+        Boss["nn_boss.rpl (SpotPass Engine)"]
+        OfficialMenu["Official Notification Menu (inf.rpx)"]
+        GamePadLED["GamePad DRC LED (nn::acp)"]
+        Toast["Overlay Toasts (NotificationModule)"]
+
+        CLI -->|WiFi Push| TCP
+        TCP --> TestApp
+        TestApp -->|PostNews IPC| Boss
+        Boss --> OfficialMenu
+        TestApp --> GamePadLED
+        Plugin --> Toast
+        Plugin --> GamePadLED
+    end
+```
 
 ---
 
-## 🚀 Building & Running
+## ✨ Features & Capabilities
 
-### 1. Desktop Simulator & Unit Tests
-You can compile and test the full notification pipeline directly on your PC:
+* **🏮 GamePad HOME Button Pulse**: Direct hardware control over `<nn/acp/drcled_c.h>` to pulse the GamePad HOME ring with the authentic SpotPass breathing pattern.
+* **📬 Official Nintendo Notification Menu Injection**: Direct dynamic linkage to `nn_boss.rpl`'s `nn::boss::News::PostNews()`, feeding compressed XML items directly into Nintendo's notification applet (`inf.rpx`, Title ID `00050010-1004D200`).
+* **🎮 Native App Jump Integration**: Injected notifications include `<AppLink>` metadata, rendering the official "Start Software" icon to jump straight into Splatoon, Minecraft, or Mario Kart 8 directly from the notification board!
+* **🖥️ Desktop Notification Bridge**: Send real-time messages and announcements directly from Linux/macOS/Windows over TCP port `7331`.
+* **🌐 Pretendo Network Incident Alerts**: Automatically sync and display official Pretendo service alerts and maintenance bulletins on your GamePad.
+* **🛡️ Non-Volatile RAM Safety**: Clean in-memory execution via WUPS and Aroma applets. Zero MLC/NAND modifications.
+
+---
+
+## 🔬 Reverse Engineering Breakthroughs
+
+Comprehensive reverse-engineering notes are documented in [`docs/REVERSE_ENGINEERING.md`](docs/REVERSE_ENGINEERING.md):
+* **XML Schema**: Disassembled `inf.elf` and documented the official UTF-16 element tree (`<Message>`, `<Subject>`, `<Body>`, `<TitleId>`, `<Feeling>`, `<OptoutType>`, `<LinkType>`, `<Links>`).
+* **Compression Pipeline**: Identified `inflateInit2_` stream decompression with `windowBits = 47` (auto-detecting zlib/gzip headers).
+* **IPC Linkage**: Reversed `nn_boss.rpl` dynamic entry points:
+  - `Initialize__Q2_2nn4bossFv()`
+  - `PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2()`
+  - `Finalize__Q2_2nn4bossFv()`
+
+---
+
+## 🚀 Components & Usage
+
+### 1. `tools/wiiu_notify.py` (Desktop CLI)
+Push notifications from your computer over your local network:
 ```bash
-# Run unit tests
-make test
+# Push an instant desktop message with GamePad LED pulse
+python3 tools/wiiu_notify.py --ip 192.168.1.100 --title "Discord Message" --body "Game night starting in 10 minutes!"
 
-# Run interactive desktop simulator with sample feed
-make run
+# Push a game inactivity reminder with App Jump button
+python3 tools/wiiu_notify.py --ip 192.168.1.100 --title "Turf War Reminder" --body "Inkopolis is calling!" --app splatoon
+
+# Fetch and broadcast live Pretendo Network incidents
+python3 tools/wiiu_notify.py --ip 192.168.1.100 --pretendo
 ```
 
-### 2. Wii U Console Build (Aroma CFW)
-Using devkitPPC & WUPS rules:
+### 2. `test_app` (`NotifyTest.wuhb`)
+A dedicated on-console testbed and TCP bridge receiver:
+* Auto-injects Splatoon reminders on boot.
+* Interactive keypad controls:
+  - `[A]`: Inject Splatoon reminder with native App Jump button.
+  - `[B]`: Inject Minecraft reminder.
+  - `[X]`: Inject Pretendo community announcement.
+  - `[+]` or `HOME`: Safe, non-blocking exit.
+* Listens on TCP port `7331` for incoming desktop push notifications.
+
+### 3. `CommunityNotifications.wps` (Aroma WUPS Plugin)
+A lightweight background plugin that monitors `sd:/wiiu/notifications/feed.json` and renders native on-screen toast overlays via `NotificationModule`.
+
+---
+
+## 🛠️ Building from Source
+
+### Prerequisites
+* Docker **or** devkitPPC with `wut`, `wups`, and `libnotifications`.
+
+### Compile `NotifyTest.wuhb`
 ```bash
-export DEVKITPRO=/opt/devkitpro
-make wiiu
-```
-Or via Docker:
-```bash
-docker run --rm -v $(pwd):/project ghcr.io/wiiu-env/cflpack:latest make -f Makefile.wiiu
+docker run --rm -v $(pwd)/test_app:/project -w /project wiiu-builder make clean && make
 ```
 
-### 3. Installation to Wii U SD Card
-1. Copy `CommunityNotifications.wups` to `sd:/wiiu/environments/aroma/plugins/`.
-2. Ensure `NotificationModule.wms` is in `sd:/wiiu/environments/aroma/modules/` (standard in Aroma).
-3. Place `server/feed_example.json` into `sd:/wiiu/notifications/feed.json`.
-4. Power on your Wii U and enjoy!
+### Compile `CommunityNotifications.wps`
+```bash
+docker run --rm -v $(pwd):/project -w /project wiiu-builder make -f Makefile.wiiu clean && make -f Makefile.wiiu
+```
+
+---
+
+## 🗺️ Roadmap
+
+- [x] **Milestone 1: Core Architecture & GamePad LED Control**
+- [x] **Milestone 2: Official Notification Applet (`inf.rpx`) Reverse Engineering**
+- [x] **Milestone 3: Dynamic `nn_boss` PostNews Injection Engine**
+- [x] **Milestone 4: TCP Desktop Bridge & Pretendo Alert CLI**
+- [ ] **Milestone 5: Multi-Profile Account Routing & Standalone Background Daemon**
+
+---
+
+## 📜 License
+Licensed under the [GNU General Public License v3.0](LICENSE).

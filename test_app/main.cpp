@@ -63,17 +63,19 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
 
     int (*z_compress)(uint8_t *dest, uint32_t *destLen, const uint8_t *source, uint32_t sourceLen) = nullptr;
     uint32_t (*boss_init)() = nullptr;
+    uint32_t (*boss_post_news_plural)(const uint8_t *slotList, uint32_t slotCount, const uint8_t *data, uint32_t size) = nullptr;
     uint32_t (*boss_post_news_ex)(const uint8_t *data, uint32_t size, uint32_t* pContentId, uint32_t opt) = nullptr;
     uint32_t (*boss_finalize)() = nullptr;
 
     OSDynLoad_FindExport(zlib_mod, OS_DYNLOAD_EXPORT_FUNC, "compress", (void**)&z_compress);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Initialize__Q2_2nn4bossFv", (void**)&boss_init);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNewsToPluralAccount__Q3_2nn4boss4NewsSFPUcUiT1T2", (void**)&boss_post_news_plural);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2", (void**)&boss_post_news_ex);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Finalize__Q2_2nn4bossFv", (void**)&boss_finalize);
 
-    if (!z_compress || !boss_init || !boss_post_news_ex) {
+    if (!z_compress || !boss_init || (!boss_post_news_plural && !boss_post_news_ex)) {
         if (out_status) snprintf(out_status, out_status_sz, "Err: symbols not found");
-        LogMessage("Err: symbols not found (z=%p, init=%p, post=%p)", z_compress, boss_init, boss_post_news_ex);
+        LogMessage("Err: symbols not found");
         return false;
     }
 
@@ -100,11 +102,33 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     uint32_t b_init = boss_init();
     LogMessage("boss_init returned 0x%08X", b_init);
 
-    // 2. Post news into official Nintendo notification menu
-    uint32_t content_id = 0;
-    LogMessage("Calling boss_post_news_ex(buf, %u, &content_id, 0)...", comp_len);
-    uint32_t post_ret = boss_post_news_ex(comp_buf, comp_len, &content_id, 0);
-    LogMessage("boss_post_news_ex returned 0x%08X, content_id=%u", post_ret, content_id);
+    // 2. Discover active user account slots
+    uint8_t valid_slots[12];
+    uint32_t slot_count = 0;
+    for (uint8_t s = 1; s <= 12; s++) {
+        uint32_t pid = nn::act::GetPersistentIdEx(s);
+        if (pid != 0) {
+            valid_slots[slot_count++] = s;
+            LogMessage("Found Account Slot %u -> PersistentID 0x%08X", s, pid);
+        }
+    }
+    if (slot_count == 0) {
+        valid_slots[0] = 1;
+        slot_count = 1;
+    }
+
+    // 3. Post news into official Nintendo notification menu
+    uint32_t post_ret = 0;
+    if (boss_post_news_plural) {
+        LogMessage("Calling boss_post_news_plural(slots=%u, len=%u)...", slot_count, comp_len);
+        post_ret = boss_post_news_plural(valid_slots, slot_count, comp_buf, comp_len);
+        LogMessage("boss_post_news_plural returned 0x%08X", post_ret);
+    } else {
+        uint32_t content_id = 0;
+        LogMessage("Calling boss_post_news_ex(buf, %u, &content_id, 0)...", comp_len);
+        post_ret = boss_post_news_ex(comp_buf, comp_len, &content_id, 0);
+        LogMessage("boss_post_news_ex returned 0x%08X, content_id=%u", post_ret, content_id);
+    }
 
     if (boss_finalize) {
         boss_finalize();
@@ -113,7 +137,7 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     free(comp_buf);
 
     if (out_status) {
-        snprintf(out_status, out_status_sz, "post=0x%08X, ID=%u", post_ret, content_id);
+        snprintf(out_status, out_status_sz, "post=0x%08X (%u accounts)", post_ret, slot_count);
     }
     return (post_ret == 0);
 }
