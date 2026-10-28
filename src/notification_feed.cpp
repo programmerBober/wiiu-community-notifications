@@ -259,10 +259,46 @@ static const struct {
     {
         "splatoon",
         "Squid Research Lab",
-        "Inkopolis News Bulletin",
-        "Incoming transmission from the Squid Sisters! Turf War rotation updated. Stay fresh on the battleground!",
+        "Splatoon - Inkopolis News",
+        "Splatfest announcement: Team Cats vs Team Dogs is live! Head to Inkopolis Plaza to claim your tee!",
         "0005000010176A00",
         "HAPPY",
+        1
+    },
+    {
+        "minecraft",
+        "Minecraft News",
+        "Battle Mini Game - Arena Open!",
+        "Join your friends on Nintendo Network in the Medieval arena! Battle and Glide lobbies are open.",
+        "00050000101D7500",
+        "HAPPY",
+        1
+    },
+    {
+        "isaac",
+        "The Binding of Isaac",
+        "Daily Seeded Run Available",
+        "Today's seeded challenge is live! Descend into the Basement and fight for the top of the leaderboards!",
+        "00050000101C9B00",
+        "SURPRISED",
+        1
+    },
+    {
+        "fast_racing",
+        "FAST Racing NEO",
+        "Subsonic League Cup Open",
+        "Switch your phase colors, hit supersonic boost pads, and set a new lap record on the tracks!",
+        "00050000101D6000",
+        "INSPIRED",
+        1
+    },
+    {
+        "starfox",
+        "Star Fox Zero",
+        "Corneria Defense Alert",
+        "General Pepper to Star Fox: Enemy forces detected near Sector Beta! Scramble your Arwings immediately!",
+        "00050000101B0500",
+        "SURPRISED",
         1
     },
     {
@@ -272,33 +308,6 @@ static const struct {
         "All network game services are online! Enjoy multiplayer matchmaking and Miiverse interactions across Cafe OS.",
         "0005001010040200",
         "HAPPY",
-        1
-    },
-    {
-        "mk8",
-        "Mario Kart TV",
-        "Mario Kart 8 Tournament",
-        "Weekly 150cc Worldwide GP Tournament is now open! Hit the track and drift your way to victory!",
-        "000500001010EC00",
-        "SURPRISED",
-        1
-    },
-    {
-        "minecraft",
-        "Minecraft News",
-        "Battle Mini Game Lobby",
-        "Minigame arenas are buzzing! Jump into Battle and Glide public lobbies with friends on Nintendo Network.",
-        "00050000101D7500",
-        "HAPPY",
-        1
-    },
-    {
-        "smm",
-        "Course World",
-        "Course World Spotlight",
-        "New top-rated courses are trending! Fire up Course World and see if you can conquer the Super Expert gauntlet.",
-        "000500001018DD00",
-        "INSPIRED",
         1
     }
 };
