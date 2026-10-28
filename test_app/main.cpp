@@ -22,19 +22,23 @@
 
 #define SERVER_PORT 7331
 #define STACK_SIZE 0x8000
-#define LOG_FILE "fs:/vol/external01/wiiu/notifications/post_log.txt"
+#define LOG_FILE_MLC "fs:/vol/storage_mlc01/usr/notifications/post_log.txt"
+#define LOG_FILE_SD  "fs:/vol/external01/wiiu/notifications/post_log.txt"
 
 static volatile bool s_server_running = false;
 static int s_server_fd = -1;
 static uint8_t s_thread_stack[STACK_SIZE] __attribute__((aligned(32)));
 static OSThread s_server_thread;
-static uint32_t s_persistent_id = 1;
+static uint32_t s_persistent_id = 0;
 
 static NMColor s_cyan_bg = { 0, 162, 232, 240 };
 static NMColor s_white_fg = { 255, 255, 255, 255 };
 
 static void LogMessage(const char* fmt, ...) {
-    FILE* f = fopen(LOG_FILE, "a");
+    FILE* f = fopen(LOG_FILE_SD, "a");
+    if (!f) {
+        f = fopen(LOG_FILE_MLC, "a");
+    }
     if (!f) return;
     va_list args;
     va_start(args, fmt);
@@ -42,6 +46,37 @@ static void LogMessage(const char* fmt, ...) {
     va_end(args);
     fprintf(f, "\n");
     fclose(f);
+}
+
+static void EscapeXmlString(const char* src, char* dst, size_t dst_sz) {
+    if (!dst || dst_sz == 0) return;
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t out = 0;
+    for (size_t i = 0; src[i] != '\0' && out + 6 < dst_sz; i++) {
+        char c = src[i];
+        if (c == '&') {
+            memcpy(dst + out, "&amp;", 5);
+            out += 5;
+        } else if (c == '<') {
+            memcpy(dst + out, "&lt;", 4);
+            out += 4;
+        } else if (c == '>') {
+            memcpy(dst + out, "&gt;", 4);
+            out += 4;
+        } else if (c == '\"') {
+            memcpy(dst + out, "&quot;", 6);
+            out += 6;
+        } else if (c == '\'') {
+            memcpy(dst + out, "&apos;", 6);
+            out += 6;
+        } else {
+            dst[out++] = c;
+        }
+    }
+    dst[out] = '\0';
 }
 
 //-----------------------------------------------------------------------------
@@ -63,17 +98,19 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
 
     int (*z_compress)(uint8_t *dest, uint32_t *destLen, const uint8_t *source, uint32_t sourceLen) = nullptr;
     uint32_t (*boss_init)() = nullptr;
+    uint32_t (*boss_post_news_pids)(const uint8_t *data, uint32_t size, const uint32_t *persistentIds, uint32_t numAccounts) = nullptr;
     uint32_t (*boss_post_news_plural)(const uint8_t *slotList, uint32_t slotCount, const uint8_t *data, uint32_t size) = nullptr;
-    uint32_t (*boss_post_news_ex)(const uint8_t *data, uint32_t size, uint32_t* pContentId, uint32_t opt) = nullptr;
+    uint32_t (*boss_set_new_arrival)(const uint32_t *accountThis, uint32_t flag) = nullptr;
     uint32_t (*boss_finalize)() = nullptr;
 
     OSDynLoad_FindExport(zlib_mod, OS_DYNLOAD_EXPORT_FUNC, "compress", (void**)&z_compress);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Initialize__Q2_2nn4bossFv", (void**)&boss_init);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2", (void**)&boss_post_news_pids);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNewsToPluralAccount__Q3_2nn4boss4NewsSFPUcUiT1T2", (void**)&boss_post_news_plural);
-    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2", (void**)&boss_post_news_ex);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss7AccountFb", (void**)&boss_set_new_arrival);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Finalize__Q2_2nn4bossFv", (void**)&boss_finalize);
 
-    if (!z_compress || !boss_init || (!boss_post_news_plural && !boss_post_news_ex)) {
+    if (!z_compress || !boss_init || !boss_post_news_pids) {
         if (out_status) snprintf(out_status, out_status_sz, "Err: symbols not found");
         LogMessage("Err: symbols not found");
         return false;
@@ -97,37 +134,45 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     }
     LogMessage("Compressed XML %u -> %u bytes", xml_len, comp_len);
 
-    // 1. Initialize nn::boss
-    LogMessage("Calling boss_init()...");
+    // 1. Initialize nn::act & nn::boss
+    nn::act::Initialize();
     uint32_t b_init = boss_init();
     LogMessage("boss_init returned 0x%08X", b_init);
 
-    // 2. Discover active user account slots
-    uint8_t valid_slots[12];
-    uint32_t slot_count = 0;
-    for (uint8_t s = 1; s <= 12; s++) {
-        uint32_t pid = nn::act::GetPersistentIdEx(s);
-        if (pid != 0) {
-            valid_slots[slot_count++] = s;
-            LogMessage("Found Account Slot %u -> PersistentID 0x%08X", s, pid);
+    // 2. Target active profile
+    uint32_t target_pid = nn::act::GetPersistentId();
+    uint8_t target_slot = 0;
+    if (target_pid != 0) {
+        target_slot = nn::act::GetSlotNo();
+    } else {
+        for (uint8_t s = 1; s <= 12; s++) {
+            uint32_t pid = nn::act::GetPersistentIdEx(s);
+            if (pid != 0) {
+                target_pid = pid;
+                target_slot = s;
+                break;
+            }
         }
     }
-    if (slot_count == 0) {
-        valid_slots[0] = 1;
-        slot_count = 1;
+    if (target_pid == 0) {
+        target_pid = 0x80000001;
+        target_slot = 1;
     }
 
-    // 3. Post news into official Nintendo notification menu
-    uint32_t post_ret = 0;
-    if (boss_post_news_plural) {
-        LogMessage("Calling boss_post_news_plural(slots=%u, len=%u)...", slot_count, comp_len);
-        post_ret = boss_post_news_plural(valid_slots, slot_count, comp_buf, comp_len);
+    // 3. Post news into official Nintendo notification menu for Pretendo profile
+    LogMessage("Calling boss_post_news_pids(pid=0x%08X, count=1, len=%u)...", target_pid, comp_len);
+    uint32_t post_ret = boss_post_news_pids(comp_buf, comp_len, &target_pid, 1);
+    LogMessage("boss_post_news_pids returned 0x%08X", post_ret);
+
+    if (post_ret != 0 && target_slot != 0 && boss_post_news_plural) {
+        LogMessage("Fallback boss_post_news_plural(slot=%u, len=%u)...", target_slot, comp_len);
+        post_ret = boss_post_news_plural(&target_slot, 1, comp_buf, comp_len);
         LogMessage("boss_post_news_plural returned 0x%08X", post_ret);
-    } else {
-        uint32_t content_id = 0;
-        LogMessage("Calling boss_post_news_ex(buf, %u, &content_id, 0)...", comp_len);
-        post_ret = boss_post_news_ex(comp_buf, comp_len, &content_id, 0);
-        LogMessage("boss_post_news_ex returned 0x%08X, content_id=%u", post_ret, content_id);
+    }
+
+    if (post_ret == 0 && boss_set_new_arrival) {
+        uint32_t arr_ret = boss_set_new_arrival(&target_pid, 1);
+        LogMessage("SetNewArrivalFlag(0x%08X, 1) returned 0x%08X", target_pid, arr_ret);
     }
 
     if (boss_finalize) {
@@ -137,7 +182,7 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
     free(comp_buf);
 
     if (out_status) {
-        snprintf(out_status, out_status_sz, "post=0x%08X (%u accounts)", post_ret, slot_count);
+        snprintf(out_status, out_status_sz, "post=0x%08X (PID=0x%08X)", post_ret, target_pid);
     }
     return (post_ret == 0);
 }
@@ -146,7 +191,16 @@ static void FormatSpotPassXml(char* dst, size_t dst_sz,
                              const char* title, const char* body,
                              const char* title_id, const char* feeling,
                              const char* link_type) {
-    bool has_app = (title_id && strlen(title_id) >= 16 && strcmp(link_type, "APP") == 0);
+    char safe_title[256];
+    char safe_body[768];
+    EscapeXmlString(title ? title : "Notice", safe_title, sizeof(safe_title));
+    EscapeXmlString(body ? body : "", safe_body, sizeof(safe_body));
+
+    const char* safe_feeling = (feeling && feeling[0]) ? feeling : "HAPPY";
+    bool has_app = (title_id && strlen(title_id) == 16 &&
+                    strcmp(link_type, "APP") == 0 &&
+                    strcmp(title_id, "000500101004D200") != 0 &&
+                    strcmp(title_id, "000500101004d200") != 0);
 
     if (has_app) {
         snprintf(dst, dst_sz,
@@ -167,21 +221,21 @@ static void FormatSpotPassXml(char* dst, size_t dst_sz,
             "    </AppLink>\n"
             "  </Links>\n"
             "</Message>\n",
-            title, body, title_id, feeling ? feeling : "HAPPY", title_id);
+            safe_title, safe_body, title_id, safe_feeling, title_id);
     } else {
         snprintf(dst, dst_sz,
             "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
             "<Message>\n"
             "  <Subject>%s</Subject>\n"
             "  <Body>%s</Body>\n"
-            "  <TitleId>000500101004D200</TitleId>\n"
+            "  <TitleId>0005001010040200</TitleId>\n"
             "  <HighPriority>true</HighPriority>\n"
             "  <ForceNotify>true</ForceNotify>\n"
             "  <Feeling>%s</Feeling>\n"
             "  <OptoutType>NEVER</OptoutType>\n"
             "  <LinkType>NONE</LinkType>\n"
             "</Message>\n",
-            title, body, feeling ? feeling : "HAPPY");
+            safe_title, safe_body, safe_feeling);
     }
 }
 
@@ -326,8 +380,18 @@ int main(int argc, char **argv) {
 
     NotificationModuleStatus notif_status = NotificationModule_InitLibrary();
 
+    nn::act::Initialize();
     s_persistent_id = nn::act::GetPersistentId();
-    if (s_persistent_id == 0) s_persistent_id = 1;
+    if (s_persistent_id == 0) {
+        for (uint8_t s = 1; s <= 12; s++) {
+            uint32_t pid = nn::act::GetPersistentIdEx(s);
+            if (pid != 0) {
+                s_persistent_id = pid;
+                break;
+            }
+        }
+    }
+    if (s_persistent_id == 0) s_persistent_id = 0x80000001;
 
     LogMessage("=== NotifyTest Started ===");
 
@@ -453,6 +517,7 @@ int main(int argc, char **argv) {
     OSJoinThread(&s_server_thread, nullptr);
 
     NotificationModule_DeInitLibrary();
+    nn::act::Finalize();
     WHBGfxShutdown();
     WHBProcShutdown();
     return 0;

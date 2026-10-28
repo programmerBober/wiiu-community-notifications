@@ -7,13 +7,14 @@ Wii U console for display in the official Nintendo Notification Menu.
 """
 
 import sys
+import os
 import json
 import socket
 import ftplib
 import argparse
 import urllib.request
 
-DEFAULT_WIIU_IP = "192.168.1.100"
+DEFAULT_WIIU_IP = os.getenv("WIIU_IP", "192.168.1.100")
 DEFAULT_PORT = 7331
 FTP_FEED_PATH = "/fs/vol/external01/wiiu/notifications/feed.json"
 
@@ -52,12 +53,16 @@ def send_ftp_feed(ip, payload):
         except Exception:
             feed = {"version": 1, "notifications": []}
 
+        import time
+        ts = int(time.time())
         new_entry = {
-            "id": f"desktop-{abs(hash(payload.get('body', '')))}",
+            "id": f"desktop-{ts}",
             "sender": payload.get("sender", "Desktop Bridge"),
             "title": payload.get("title", "Desktop Alert"),
             "message": payload.get("body", ""),
-            "timestamp": int(urllib.request.time.time()) if hasattr(urllib.request, "time") else 1793150000,
+            "app": payload.get("app", ""),
+            "feeling": payload.get("feeling", "HAPPY"),
+            "timestamp": ts,
             "priority": 1,
             "duration": 7.0
         }

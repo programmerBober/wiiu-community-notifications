@@ -13,12 +13,28 @@ WUPS_ROOT := $(DEVKITPRO)/wups
 
 TARGET := CommunityNotifications
 BUILD := build_wiiu
-SOURCES := src
-INCLUDES := include src
+CXX := $(DEVKITPPC)/bin/powerpc-eabi-g++
 
-CFLAGS := -Wall -O2 -ffunction-sections $(MACHDEP)
-CFLAGS += -Iinclude -D__WIIU__ -D__WUT__ -D__WUPS__
-CXXFLAGS := $(CFLAGS) -std=c++20
+CXXFLAGS := -std=c++20 -O2 -Wall -DESPRESSO -mcpu=750 -meabi -mhard-float \
+            -ffunction-sections -fdata-sections \
+            -D__WIIU__ -D__WUT__ -D__WUPS__ \
+            -Iinclude -Isrc \
+            -I$(WUPS_ROOT)/include -I$(WUT_ROOT)/include -I$(WUT_ROOT)/usr/include
 
-LIBS := -lwups -lwut -lnotifications
-LIBDIRS := $(PORTLIBS) $(WUPS_ROOT) $(WUT_ROOT)
+LDFLAGS := $(RPXSPECS) $(WUPSSPECS) \
+           -L$(WUPS_ROOT)/lib -L$(WUT_ROOT)/usr/lib -L$(WUT_ROOT)/lib \
+           -lwups -lnotifications -lwut
+
+SRCS := src/main.cpp src/drc_led_controller.cpp src/notification_config.cpp \
+        src/notification_feed.cpp src/notifications_overlay.cpp
+
+.PHONY: all clean
+
+all: $(TARGET).wps
+
+$(TARGET).elf: $(SRCS)
+	@mkdir -p $(BUILD)
+	$(CXX) $(CXXFLAGS) $(SRCS) $(LDFLAGS) -o $@
+
+clean:
+	rm -rf $(BUILD) $(TARGET).elf $(TARGET).wps

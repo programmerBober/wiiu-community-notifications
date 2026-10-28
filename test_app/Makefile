@@ -28,7 +28,7 @@ $(TARGET).rpx: $(TARGET).elf
 	elf2rpl $< $@
 
 $(TARGET).wuhb: $(TARGET).rpx
-	wuhbtool $< $@ --name "Community Notification Test" --short-name "NotifyTest" --author "programmerBober"
+	wuhbtool $< $@ --name "Community Notification Test" --short-name "NotifyTest" --author "programmerBober" --icon icon.png
 
 clean:
 	rm -f $(TARGET).elf $(TARGET).rpx $(TARGET).wuhb main.o

@@ -18,6 +18,8 @@ typedef struct {
     char sender[MAX_NOTIFY_TITLE_LEN];
     char title[MAX_NOTIFY_TITLE_LEN];
     char message[MAX_NOTIFY_TEXT_LEN];
+    char app[32];
+    char feeling[32];
     uint32_t timestamp;
     uint8_t priority;     // 0 = standard, 1 = high (triggers LED + sound)
     float duration_sec;

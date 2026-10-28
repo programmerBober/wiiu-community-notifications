@@ -1,14 +1,19 @@
-# 🎮 Wii U Community Notification System (SpotPass Revived)
+<p align="center">
+  <img src="assets/icon.png" width="160" height="160" alt="Wii U Community Notifications Logo">
+</p>
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform: Wii U / Aroma](https://img.shields.io/badge/Platform-Wii%20U%20%7C%20Aroma%20CFW-informational.svg)](https://aroma.foryour.cafe)
-[![Toolchain: devkitPPC & wut](https://img.shields.io/badge/Toolchain-devkitPPC%20%2B%20wut-green.svg)](https://github.com/devkitPro/wut)
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)]()
+<h1 align="center">Wii U Community Notifications</h1>
+<p align="center">
+  <em>Native SpotPass Revived for Wii U Aroma CFW & Pretendo Network</em>
+</p>
 
-> [!WARNING]
-> **⚠️ VIBE CODED & EXPERIMENTAL — ACTIVE RESEARCH**
->
-> This repository is an experimental prototype exploring Wii U SpotPass notification injection, GamePad DRC LED breathing patterns, and Aroma overlay rendering. It is in active research/early development and **not ready for daily end-user setups**. Use for testing and research purposes only.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+  <a href="https://aroma.foryour.cafe"><img src="https://img.shields.io/badge/Platform-Wii%20U%20%7C%20Aroma%20CFW-informational.svg" alt="Platform: Wii U"></a>
+  <a href="https://github.com/devkitPro/wut"><img src="https://img.shields.io/badge/Toolchain-devkitPPC%20%2B%20wut-green.svg" alt="Toolchain: devkitPPC + wut"></a>
+  <img src="https://img.shields.io/badge/Pretendo-Compatible-purple.svg" alt="Pretendo Compatible">
+  <img src="https://img.shields.io/badge/Build-Passing-brightgreen.svg" alt="Build Status">
+</p>
 
 Bring back the authentic magic of the Wii U! Walk into your room, see the GamePad glowing with an iconic breathing cyan/blue LED around the HOME button, hear the chime, and see lively community announcements, Splatfest bulletins, game nights, and desktop alerts right when you boot your console.
 
@@ -18,8 +23,9 @@ Bring back the authentic magic of the Wii U! Walk into your room, see the GamePa
 
 ```mermaid
 flowchart TD
-    subgraph Desktop [💻 Desktop / Server Bridge]
+    subgraph Desktop [💻 Desktop / CLI Bridge]
         CLI["tools/wiiu_notify.py"]
+        InjectTool["tools/wiiu_news_inject.py"]
         PretendoAPI["Pretendo Incident API"]
         DesktopAlerts["Desktop Push Alerts"]
         CLI --> PretendoAPI
@@ -30,18 +36,20 @@ flowchart TD
         TCP["TCP Listener (:7331)"]
         TestApp["NotifyTest (.wuhb)"]
         Plugin["CommunityNotifications (.wps)"]
-        Boss["nn_boss.rpl (SpotPass Engine)"]
+        BossEngine["Direct MLC BOSS Storage Injector"]
+        BossFallback["nn_boss.rpl (PostNews Fallback)"]
         OfficialMenu["Official Notification Menu (inf.rpx)"]
         GamePadLED["GamePad DRC LED (nn::acp)"]
-        Toast["Overlay Toasts (NotificationModule)"]
 
-        CLI -->|WiFi Push| TCP
-        TCP --> TestApp
-        TestApp -->|PostNews IPC| Boss
-        Boss --> OfficialMenu
-        TestApp --> GamePadLED
-        Plugin --> Toast
+        CLI -->|WiFi Push TCP 7331| TCP
+        InjectTool -->|Direct FTP Injection| BossEngine
+        TCP --> Plugin
+        Plugin --> BossEngine
+        Plugin --> BossFallback
+        BossEngine --> OfficialMenu
+        BossFallback --> OfficialMenu
         Plugin --> GamePadLED
+        TestApp --> GamePadLED
     end
 ```
 
@@ -50,23 +58,26 @@ flowchart TD
 ## ✨ Features & Capabilities
 
 * **🏮 GamePad HOME Button Pulse**: Direct hardware control over `<nn/acp/drcled_c.h>` to pulse the GamePad HOME ring with the authentic SpotPass breathing pattern.
-* **📬 Official Nintendo Notification Menu Injection**: Direct dynamic linkage to `nn_boss.rpl`'s `nn::boss::News::PostNews()`, feeding compressed XML items directly into Nintendo's notification applet (`inf.rpx`, Title ID `00050010-1004D200`).
-* **🎮 Native App Jump Integration**: Injected notifications include `<AppLink>` metadata, rendering the official "Start Software" icon to jump straight into Splatoon, Minecraft, or Mario Kart 8 directly from the notification board!
+* **📬 Official Nintendo Notification Menu Injection**: Injects directly into the official Nintendo Notification Menu (`inf.rpx`, Title ID `00050010-1004D200`), updating `ref_count.db`, `fad.db`, and `didx.db` with zlib-compressed `<Message>` XML.
+* **🎮 Native App Jump Integration**: Injected notifications support `<AppLink>` metadata and game title IDs (Splatoon, Minecraft, Mario Kart 8, etc.), rendering the official "Start Software" icon to jump straight into games from the notification board!
+* **👤 Auto-Detecting Account Routing**: Automatically discovers the active Pretendo/local account slot via `nn::act::GetPersistentId()`, delivering notifications to the active profile without hardcoded IDs.
 * **🖥️ Desktop Notification Bridge**: Send real-time messages and announcements directly from Linux/macOS/Windows over TCP port `7331`.
 * **🌐 Pretendo Network Incident Alerts**: Automatically sync and display official Pretendo service alerts and maintenance bulletins on your GamePad.
-* **🛡️ Non-Volatile RAM Safety**: Clean in-memory execution via WUPS and Aroma applets. Zero MLC/NAND modifications.
+* **📁 SD Card Feed Poller**: Background polling of `sd:/wiiu/notifications/feed.json` every 5 minutes with deduplication (`last_seen.txt`).
 
 ---
 
 ## 🔬 Reverse Engineering Breakthroughs
 
 Comprehensive reverse-engineering notes are documented in [`docs/REVERSE_ENGINEERING.md`](docs/REVERSE_ENGINEERING.md):
-* **XML Schema**: Disassembled `inf.elf` and documented the official UTF-16 element tree (`<Message>`, `<Subject>`, `<Body>`, `<TitleId>`, `<Feeling>`, `<OptoutType>`, `<LinkType>`, `<Links>`).
-* **Compression Pipeline**: Identified `inflateInit2_` stream decompression with `windowBits = 47` (auto-detecting zlib/gzip headers).
-* **IPC Linkage**: Reversed `nn_boss.rpl` dynamic entry points:
-  - `Initialize__Q2_2nn4bossFv()`
-  - `PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2()`
-  - `Finalize__Q2_2nn4bossFv()`
+* **XML Schema**: Disassembled `inf.rpx` and documented the official element tree (`<Message>`, `<Subject>`, `<Body>`, `<TitleId>`, `<HighPriority>`, `<ForceNotify>`, `<Feeling>`, `<OptoutType>`, `<LinkType>`, `<Links>`).
+* **Compression Pipeline**: Disassembled `inf.rpx` decompressor routine at `0x209e84c` / `0x209e900` discovering mandatory `inflateInit2(..., 47, ...)` expectation on all stored news items.
+* **Storage Database Layout**:
+  - `data/news/<serial>`: zlib-compressed UTF-8 `<Message>` XML.
+  - `data/news/ref_count.db`: 8-byte header + 512 entries (0x24 bytes each).
+  - `<pid>/news/fad.db`: 8-byte header + 512 entries (0x38 bytes each).
+  - `<pid>/news/didx.db`: 128 KB bitmap (bit `serial - 1` MSB-first).
+* **Dynamic Account Resolution**: Resolved ABI conventions for `nn::act` and `nn::boss` (`SetNewArrivalFlag__Q3_2nn4boss7AccountFb`).
 
 ---
 
@@ -76,17 +87,24 @@ Comprehensive reverse-engineering notes are documented in [`docs/REVERSE_ENGINEE
 Push notifications from your computer over your local network:
 ```bash
 # Push an instant desktop message with GamePad LED pulse
-python3 tools/wiiu_notify.py --ip 192.168.1.100 --title "Discord Message" --body "Game night starting in 10 minutes!"
+python3 tools/wiiu_notify.py --ip <WIIU_IP> --title "Discord Message" --body "Game night starting in 10 minutes!"
 
 # Push a game inactivity reminder with App Jump button
-python3 tools/wiiu_notify.py --ip 192.168.1.100 --title "Turf War Reminder" --body "Inkopolis is calling!" --app splatoon
+python3 tools/wiiu_notify.py --ip <WIIU_IP> --title "Turf War Reminder" --body "Inkopolis is calling!" --app splatoon
 
 # Fetch and broadcast live Pretendo Network incidents
-python3 tools/wiiu_notify.py --ip 192.168.1.100 --pretendo
+python3 tools/wiiu_notify.py --ip <WIIU_IP> --pretendo
+```
+*(Tip: Set `export WIIU_IP="192.168.x.x"` to omit `--ip` on every command!)*
+
+### 2. `tools/wiiu_news_inject.py` (Direct MLC Storage Injector)
+Directly injects zlib-compressed notifications into the Wii U Notification applet's BOSS storage over FTP with auto-detected account slot:
+```bash
+python3 tools/wiiu_news_inject.py --ip <WIIU_IP> --title "Pretendo" --body "Welcome to the revived SpotPass network!" --feeling HAPPY
 ```
 
-### 2. `test_app` (`NotifyTest.wuhb`)
-A dedicated on-console testbed and TCP bridge receiver:
+### 3. `NotifyTest.wuhb` (On-Console Testbed & Standalone App)
+A standalone Aroma homebrew app to verify injection, LED pulsing, and socket reception:
 * Auto-injects Splatoon reminders on boot.
 * Interactive keypad controls:
   - `[A]`: Inject Splatoon reminder with native App Jump button.
@@ -95,8 +113,11 @@ A dedicated on-console testbed and TCP bridge receiver:
   - `[+]` or `HOME`: Safe, non-blocking exit.
 * Listens on TCP port `7331` for incoming desktop push notifications.
 
-### 3. `CommunityNotifications.wps` (Aroma WUPS Plugin)
-A lightweight background plugin that monitors `sd:/wiiu/notifications/feed.json` and renders native on-screen toast overlays via `NotificationModule`.
+### 4. `CommunityNotifications.wps` (Aroma WUPS Background Plugin)
+A silent background plugin that runs across the Wii U Menu and in-game:
+* Hosts a live TCP server on port `7331` for instant alerts.
+* Polls `sd:/wiiu/notifications/feed.json` every 5 minutes.
+* Streams updates directly to BOSS storage and sets the unread notification arrival badge.
 
 ---
 
@@ -121,9 +142,9 @@ docker run --rm -v $(pwd):/project -w /project wiiu-builder make -f Makefile.wii
 
 - [x] **Milestone 1: Core Architecture & GamePad LED Control**
 - [x] **Milestone 2: Official Notification Applet (`inf.rpx`) Reverse Engineering**
-- [x] **Milestone 3: Dynamic `nn_boss` PostNews Injection Engine**
+- [x] **Milestone 3: Direct MLC BOSS Storage Injector Engine**
 - [x] **Milestone 4: TCP Desktop Bridge & Pretendo Alert CLI**
-- [ ] **Milestone 5: Multi-Profile Account Routing & Standalone Background Daemon**
+- [x] **Milestone 5: Dynamic Multi-Profile Account Routing & Standalone Background Plugin**
 
 ---
 

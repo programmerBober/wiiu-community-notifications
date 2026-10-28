@@ -1,4 +1,5 @@
 #include "drc_led_controller.h"
+#include "notification_config.h"
 #include <stdio.h>
 
 #if defined(__WIIU__) || defined(__WUT__)
@@ -15,15 +16,25 @@ static uint32_t s_persistent_id = 0;
 
 bool DrcLed_Init(void) {
 #if defined(__WIIU__) || defined(__WUT__)
+    nn::act::Initialize();
     s_persistent_id = nn::act::GetPersistentId();
     if (s_persistent_id == 0) {
-        // Fallback default slot if no active account slot is bound
-        s_persistent_id = 1;
+        for (uint8_t s = 1; s <= 12; s++) {
+            uint32_t pid = nn::act::GetPersistentIdEx(s);
+            if (pid != 0) {
+                s_persistent_id = pid;
+                break;
+            }
+        }
     }
+    if (s_persistent_id == 0) {
+        s_persistent_id = 0x80000001;
+    }
+    nn::act::Finalize();
     s_led_initialized = true;
     return true;
 #else
-    s_persistent_id = 0x12345678;
+    s_persistent_id = 0x80000001;
     s_led_initialized = true;
     printf("[DrcLed] Initialized mock GamePad LED controller (PersistentID: 0x%08X)\n", s_persistent_id);
     return true;
@@ -32,7 +43,6 @@ bool DrcLed_Init(void) {
 
 void DrcLed_Shutdown(void) {
     if (!s_led_initialized) return;
-    DrcLed_TurnOff();
     s_led_initialized = false;
 }
 

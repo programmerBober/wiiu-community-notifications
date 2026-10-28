@@ -103,11 +103,11 @@
 ## 🛠️ Freezing Bug Fix (Profile 1 vs Profile 2)
 
 ### 7. Root Cause
-* Profile 1 (`80000012`, original console NNID) had:
+* Profile 1 (original console NNID) had:
   - `NeedsToDownloadMiiImage = 1` pointing to shutdown `https://mii-secure.account.nintendo.net/` in `account.dat`.
   - Dead endpoints in `task.db` (`https://npvk.app.nintendo.net/reports`).
 * Synchronous connection calls blocked `inf.rpx` before the main rendering loop started.
-* Profile 2 (`80000014`, Pretendo linked) did not freeze because its endpoints resolve to Pretendo CDN.
+* Profile 2 (Pretendo linked) did not freeze because its endpoints resolve to Pretendo CDN.
 
 ### 8. Resolution
 * Patched `account.dat` setting `NeedsToDownloadMiiImage = 0`.

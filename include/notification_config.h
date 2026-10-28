@@ -15,8 +15,8 @@ extern "C" {
 #define NOTIFY_HISTORY_FILE     "history.log"
 #define NOTIFY_STATE_FILE       "last_seen.txt"
 
-#define NOTIFY_DEFAULT_POLL_INTERVAL_SEC 900 // 15 minutes
-#define NOTIFY_BOOT_DELAY_SEC            8   // Wait 8s after boot for system & network to settle
+#define NOTIFY_DEFAULT_POLL_INTERVAL_SEC 300 // 5 minutes
+#define NOTIFY_BOOT_DELAY_SEC            3   // Wait 3s after title start
 
 // Authentic Wii U SpotPass Theme Colors (RGBA)
 #define WIIU_BLUE_R  0

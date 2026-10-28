@@ -165,6 +165,22 @@ bool Feed_ParseJSON(const char* json_str, size_t length, NotificationFeed* out_f
         ExtractJsonStringValue("sender", obj_buf, item->sender, sizeof(item->sender));
         ExtractJsonStringValue("title", obj_buf, item->title, sizeof(item->title));
         ExtractJsonStringValue("message", obj_buf, item->message, sizeof(item->message));
+        ExtractJsonStringValue("app", obj_buf, item->app, sizeof(item->app));
+        ExtractJsonStringValue("feeling", obj_buf, item->feeling, sizeof(item->feeling));
+        if (item->feeling[0] == '\0') {
+            SafeCopyString(item->feeling, "HAPPY", sizeof(item->feeling));
+        }
+        if (item->app[0] == '\0') {
+            if (strstr(item->title, "Splatoon") || strstr(item->title, "Splatfest") || strstr(item->message, "Inkopolis")) {
+                SafeCopyString(item->app, "0005000010176A00", sizeof(item->app));
+            } else if (strstr(item->title, "Minecraft")) {
+                SafeCopyString(item->app, "00050000101D7500", sizeof(item->app));
+            } else if (strstr(item->title, "Kart 8") || strstr(item->sender, "Kart")) {
+                SafeCopyString(item->app, "000500001010EC00", sizeof(item->app));
+            } else if (strstr(item->sender, "Mario Maker") || strstr(item->title, "Course")) {
+                SafeCopyString(item->app, "000500001018DD00", sizeof(item->app));
+            }
+        }
         item->timestamp = (uint32_t)ExtractJsonNumberValue("timestamp", obj_buf, 0);
         item->priority = (uint8_t)ExtractJsonNumberValue("priority", obj_buf, 0);
         item->duration_sec = (float)ExtractJsonNumberValue("duration", obj_buf, 6.0);
