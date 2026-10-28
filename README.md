@@ -162,6 +162,10 @@ docker run --rm -v $(pwd):/project -w /project wiiu-builder make -f Makefile.wii
   - [ ] Configurable SD feed background polling frequency (5m / 10m / 30m / Disabled).
   - [ ] Enable/disable TCP socket server and configure listening port.
   - [ ] Inactivity reminder toggles and custom community feed sources.
+- [ ] **Milestone 8: Autonomous On-Console Delivery (Zero-PC Mode)**
+  - [ ] **Direct Wi-Fi Network Fetcher**: Download live Pretendo announcements, Splatfest notices, and maintenance alerts straight from the web via `nlibcurl`, removing the need to run tools from a computer.
+  - [ ] **Built-In Inactivity Generator**: Periodically trigger authentic game notices with App Jump buttons (e.g. *"Inkopolis is calling!"*, *"Time to visit your Minecraft world!"*) locally on the console.
+  - [ ] **Offline Community Calendar**: Automatic weekend event bulletins and game night reminders scheduled by system clock.
 
 ---
 
