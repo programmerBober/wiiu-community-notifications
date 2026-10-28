@@ -9,7 +9,7 @@
   <a href="https://aroma.foryour.cafe"><img src="https://img.shields.io/badge/Platform-Wii%20U%20%7C%20Aroma%20CFW-informational.svg" alt="Platform: Wii U"></a>
   <a href="https://github.com/devkitPro/wut"><img src="https://img.shields.io/badge/Toolchain-devkitPPC%20%2B%20wut-green.svg" alt="Toolchain: devkitPPC + wut"></a>
   <img src="https://img.shields.io/badge/Pretendo-Compatible-purple.svg" alt="Pretendo Compatible">
-  <img src="https://img.shields.io/badge/Status-Experimental%20%2F%20WIP-orange.svg" alt="Status: Experimental">
+  <img src="https://img.shields.io/badge/Version-v0.2.0--beta-brightgreen.svg" alt="Version: v0.2.0-beta">
 </p>
 
 > [!CAUTION]
@@ -173,6 +173,50 @@ docker run --rm -v $(pwd):/project -w /project wiiu-builder make -f Makefile.wii
   - [x] Built-in autonomous rotation engine delivering authentic community bulletins locally on console without a PC.
   - [x] Curated game catalog rotation with direct App Jump links (Splatoon Inkopolis News, Pretendo Network Status, Mario Kart 8 GP Tournament, Minecraft Battle Minigame, Super Mario Maker Course World).
   - [x] Direct background MLC injection, badge sync, and SD card history logging.
+- [x] **Milestone 9: Smart GamePad LED Input Dismissal & Auto-Off Timer (Beta)**
+  - [x] Non-intrusive GamePad HOME button LED with configurable auto-off timer (5s, 10s default, 30s, 60s).
+  - [x] Hardware input dismissal: touching the touchscreen or pressing any button instantly extinguishes the LED.
+  - [x] Full multi-profile sync across all registered accounts (`fad.db` and `didx.db`) preventing orphan unread alert loops.
+  - [x] Fast-path TCP remote control commands (`led_off`, `led_on`, `clear`).
+- [x] **Milestone 10: Real-Time Pretendo Network Forum & Blog Scraper**
+  - [x] Live Discourse API crawler (`tools/pretendo_scraper.py`) fetching real-time announcements without authentication or rate limits.
+  - [x] Official Pretendo blog RSS integration with heuristic game mapping and Mii emotional expressions.
+- [x] **Milestone 11: Expanded Notification Types & Custom Styled Overlays**
+  - [x] 6 distinct notification categories: `game`, `maintenance`, `community`, `friend`, `achievement`, and `system`.
+  - [x] 14 rich presets for all installed games (Splatoon, Mario Kart 8, Smash, Mario Maker, Wind Waker HD, NSMBU, Minecraft, FAST Racing, Star Fox Zero, Isaac).
+  - [x] Color-coded on-screen toast overlays dynamically matched to notification categories (Blue, Red, Green, Purple, Amber, Dark).
+
+---
+
+## 💻 Public Desktop & CLI Tools
+
+The `tools/` directory provides open-source, zero-dependency Python tools to dispatch notifications to any Wii U running the plugin:
+
+### 1. `tools/wiiu_notify.py` — Desktop Notification Bridge
+```bash
+# Push a preset game announcement
+python3 tools/wiiu_notify.py --ip <WIIU_IP> --preset mariokart
+
+# Push a custom achievement toast
+python3 tools/wiiu_notify.py --ip <WIIU_IP> --type achievement --title "World Record!" --body "0:34.120 on Galactic Starway" --app smm
+
+# Turn off GamePad LED remotely
+python3 tools/wiiu_notify.py --ip <WIIU_IP> --cmd led_off
+```
+
+### 2. `tools/pretendo_scraper.py` — Live Pretendo Scraper & Sync
+```bash
+# Scrape live Pretendo announcements and inject directly into the Notification Menu
+python3 tools/pretendo_scraper.py --ip <WIIU_IP> --method inject
+
+# Run as an autonomous background daemon polling every 5 minutes
+python3 tools/pretendo_scraper.py --ip <WIIU_IP> --method inject --daemon --interval 300
+```
+
+### 3. `tools/wiiu_news_inject.py` — Multi-Profile BOSS Storage Injector
+```bash
+python3 tools/wiiu_news_inject.py --ip <WIIU_IP> --title "Notice" --body "Direct MLC injection" --feeling HAPPY
+```
 
 ---
 

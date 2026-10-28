@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define WIIU_NOTIFY_VERSION_STR "v0.1.0-alpha"
+#define WIIU_NOTIFY_VERSION_STR "v0.2.0-beta"
 
 #define NOTIFY_SD_DIR           "fs:/vol/external01/wiiu/notifications"
 #define NOTIFY_FALLBACK_SD_DIR  "/wiiu/notifications"
