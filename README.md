@@ -135,13 +135,33 @@ docker run --rm -v $(pwd):/project -w /project wiiu-builder make -f Makefile.wii
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap & Upcoming Goals
 
-- [x] **Milestone 1: Core Architecture & GamePad LED Control**
+### Completed Milestones
+- [x] **Milestone 1: Core Architecture & GamePad LED Hardware Control**
+  - [x] Native Cafe OS GamePad HOME ring breathing cyan LED alert (`nn::acp`).
 - [x] **Milestone 2: Official Notification Applet (`inf.rpx`) Reverse Engineering**
+  - [x] Disassembled Cafe OS decompression routine discovering mandatory `inflateInit2(47)` zlib compression.
+  - [x] Documented official UTF-16 `<Message>` XML schema and icon title ID routing.
 - [x] **Milestone 3: Direct MLC BOSS Storage Injector Engine**
-- [x] **Milestone 4: TCP Desktop Bridge & Pretendo Alert CLI**
-- [x] **Milestone 5: Dynamic Multi-Profile Account Routing & Standalone Background Plugin**
+  - [x] High-performance, streaming C++ engine updating `data/news/`, `ref_count.db`, `fad.db`, and `didx.db`.
+- [x] **Milestone 4: Real-Time TCP Desktop Bridge & Pretendo Alert CLI**
+  - [x] Live TCP listener on port `7331` for PC/server alerts.
+- [x] **Milestone 5: Dynamic Multi-Profile Account Routing**
+  - [x] Dynamic account slot discovery via `nn::act::GetPersistentId()` without static profile IDs.
+
+### 🎯 Active Next Goals
+- [ ] **Milestone 6: System & In-Game Pause Menu Indicators**
+  - [x] GamePad physical button light: Breathing cyan LED around the HOME ring.
+  - [ ] HOME Menu (`hbm.rpx`) in-game pause screen indicator: Show active notification status / unread badge on the Notification applet icon when pausing any game.
+  - [ ] Wii U Main Menu (`men.rpx`) unread arrival indicator badge sync.
+- [ ] **Milestone 7: Native Aroma Plugin Configuration Menu (WUPS Config API)**
+  - [ ] Interactive in-game overlay menu accessible via `L + D-Pad Down + Minus`.
+  - [ ] Toggle GamePad HOME button LED breathing alert on/off.
+  - [ ] Toggle on-screen toast overlays on/off.
+  - [ ] Configurable SD feed background polling frequency (5m / 10m / 30m / Disabled).
+  - [ ] Enable/disable TCP socket server and configure listening port.
+  - [ ] Inactivity reminder toggles and custom community feed sources.
 
 ---
 
