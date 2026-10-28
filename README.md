@@ -1,8 +1,5 @@
-<p align="center">
-  <img src="assets/icon.png" width="160" height="160" alt="Wii U Community Notifications Logo">
-</p>
+# 🎮 Wii U Community Notifications (SpotPass Revived)
 
-<h1 align="center">Wii U Community Notifications</h1>
 <p align="center">
   <em>Native SpotPass Revived for Wii U Aroma CFW & Pretendo Network</em>
 </p>
