@@ -28,16 +28,16 @@ Bring back the authentic magic of the Wii U! Walk into your room, see the GamePa
 
 ```mermaid
 flowchart TD
-    subgraph Desktop [💻 Desktop / CLI Bridge]
+    subgraph Desktop ["💻 Desktop / CLI Bridge"]
         CLI["tools/wiiu_notify.py"]
         InjectTool["tools/wiiu_news_inject.py"]
-        PretendoAPI["Pretendo Incident API"]
+        PretendoAPI["Pretendo Announcements &amp; Forum API"]
         DesktopAlerts["Desktop Push Alerts"]
         CLI --> PretendoAPI
         CLI --> DesktopAlerts
     end
 
-    subgraph WiiU [🕹️ Wii U Console (Aroma CFW)]
+    subgraph WiiU ["🕹️ Wii U Console (Aroma CFW)"]
         TCP["TCP Listener (:7331)"]
         TestApp["NotifyTest (.wuhb)"]
         Plugin["CommunityNotifications (.wps)"]
