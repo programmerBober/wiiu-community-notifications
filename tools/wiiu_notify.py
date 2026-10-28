@@ -77,27 +77,26 @@ def send_ftp_feed(ip, payload):
         return False, str(e)
 
 def fetch_pretendo_announcements():
-    """Fetch recent Pretendo announcements / news."""
-    url = "https://status.pretendo.network/api/v1/incidents"
+    """Fetch live Pretendo announcements via pretendo_scraper."""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "WiiU-Notifier/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            if data and "data" in data and len(data["data"]) > 0:
-                latest = data["data"][0]
-                return {
-                    "title": latest.get("name", "Pretendo Network Update"),
-                    "body": latest.get("message", "Pretendo servers are operating normally. Welcome to the open network!"),
-                    "app": "000500101004D200",
-                    "feeling": "HAPPY"
-                }
+        from pretendo_scraper import fetch_forum_announcements, fetch_blog_feed
+        items = fetch_forum_announcements(limit=3) + fetch_blog_feed(limit=2)
+        if items:
+            latest = items[0]
+            return {
+                "title": latest["title"],
+                "body": latest["body"],
+                "app": latest["app"],
+                "feeling": latest["feeling"]
+            }
     except Exception as e:
-        pass
+        print(f"[!] Scraper import warning: {e}", file=sys.stderr)
+
     # Fallback default community message
     return {
-        "title": "Pretendo Splatfest",
-        "body": "Inkopolis Plaza is active! Join your friends on Pretendo Network for custom online events.",
-        "app": GAME_TITLE_IDS["splatoon"],
+        "title": "Pretendo Network Active",
+        "body": "Connected to Pretendo Network! Juxtaposition, game matchmaking, and friends services are online.",
+        "app": "000500101004D200",
         "feeling": "HAPPY"
     }
 

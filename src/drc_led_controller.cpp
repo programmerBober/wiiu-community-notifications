@@ -59,6 +59,9 @@ void DrcLed_TurnOn(uint32_t pattern) {
 void DrcLed_TurnOff(void) {
 #if defined(__WIIU__) || defined(__WUT__)
     ACPTurnOffDrcLed();
+    if (s_persistent_id != 0) {
+        ACPTurnOnDrcLed(s_persistent_id, (ACPDrcLedPattern)0);
+    }
 #else
     printf("[DrcLed] GamePad HOME Button LED OFF\n");
 #endif

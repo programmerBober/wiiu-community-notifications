@@ -28,6 +28,10 @@ test_data/
 *.key
 *.pem
 
+# Python
+__pycache__/
+*.pyc
+
 # IDE & Editor files
 .vscode/
 .idea/

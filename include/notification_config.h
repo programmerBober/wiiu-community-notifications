@@ -42,6 +42,7 @@ typedef struct {
     bool enable_pretendo_sync;
     bool enable_tcp;
     uint32_t poll_interval_sec;
+    uint32_t led_duration_sec;
     char feed_url[256];
 } CommunityNotifyConfig;
 

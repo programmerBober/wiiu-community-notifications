@@ -26,17 +26,18 @@ def put(ftp, path, data):
     ftp.storbinary("STOR " + path, io.BytesIO(bytes(data)))
 
 
-def find_first_pid(ftp):
+def find_all_pids(ftp):
     lines = []
     ftp.retrlines("LIST " + BASE, lines.append)
+    pids = []
     for l in lines:
         name = l.split()[-1]
         if len(name) == 8 and name.startswith("8000"):
             try:
-                return int(name, 16)
+                pids.append(int(name, 16))
             except ValueError:
                 pass
-    return 0x80000001
+    return pids if pids else [0x80000001]
 
 
 def build_xml(title, body, feeling="HAPPY", app="", tid=None, minimal=False):
@@ -54,38 +55,44 @@ def build_xml(title, body, feeling="HAPPY", app="", tid=None, minimal=False):
 
 def inject(ip, pid, title, body, feeling, app, tid=None, minimal=False):
     ftp = ftplib.FTP(ip, timeout=20); ftp.login()
-    if not pid:
-        pid = find_first_pid(ftp)
+    targets = [pid] if pid else find_all_pids(ftp)
     rc_p = f"{BASE}/data/news/ref_count.db"
-    fad_p = f"{BASE}/{pid:08x}/news/fad.db"
-    didx_p = f"{BASE}/{pid:08x}/news/didx.db"
-    rc, fad, didx = get(ftp, rc_p), get(ftp, fad_p), get(ftp, didx_p)
+    rc = get(ftp, rc_p)
 
     used = [struct.unpack(">I", rc[8 + i*0x24: 12 + i*0x24])[0] for i in range(512)]
     used = [s for s in used if s]
     serial = max([SERIAL_BASE] + used) + 1
     rc_slot = next(i for i in range(512) if not struct.unpack(">I", rc[8+i*0x24:12+i*0x24])[0])
-    fad_slot = next(i for i in range(512) if not any(fad[8+i*0x38:8+i*0x38+0x38]))
 
     xml = zlib.compress(build_xml(title, body, feeling, app, tid, minimal))  # inf.rpx inflate()s every entry
     now = time.time() - EPOCH2000
     put(ftp, f"{BASE}/data/news/{serial:08x}", xml)
 
+    ref_count_val = len(targets) << 24
     o = 8 + rc_slot*0x24
-    rc[o:o+0x24] = struct.pack(">III16xQ", serial, 0x01000000, len(xml), int(now * 1_000_000))
-    o = 8 + fad_slot*0x38
-    fad[o:o+0x38] = struct.pack(">32sI16xI", f"cn{serial:x}.xml".encode(), serial, int(now))
-    didx[(serial-1) // 8] |= 0x80 >> ((serial-1) % 8)
+    rc[o:o+0x24] = struct.pack(">III16xQ", serial, ref_count_val, len(xml), int(now * 1_000_000))
+    put(ftp, rc_p, rc)
 
-    put(ftp, rc_p, rc); put(ftp, fad_p, fad); put(ftp, didx_p, didx)
+    for p in targets:
+        fad_p = f"{BASE}/{p:08x}/news/fad.db"
+        didx_p = f"{BASE}/{p:08x}/news/didx.db"
+        fad, didx = get(ftp, fad_p), get(ftp, didx_p)
+        fad_slot = next(i for i in range(512) if not any(fad[8+i*0x38:8+i*0x38+0x38]))
+
+        fo = 8 + fad_slot*0x38
+        fad[fo:fo+0x38] = struct.pack(">32sI16xI", f"cn{serial:x}.xml".encode(), serial, int(now))
+        didx[(serial-1) // 8] |= 0x80 >> ((serial-1) % 8)
+        put(ftp, fad_p, fad); put(ftp, didx_p, didx)
+        print(f"OK: registered serial 0x{serial:08x} for profile PID 0x{p:08x}")
+
     ftp.quit()
-    print(f"OK: injected serial 0x{serial:08x} ({len(xml)} bytes) for PID 0x{pid:08x}")
+    print(f"OK: successfully injected serial 0x{serial:08x} ({len(xml)} bytes) for {len(targets)} profile(s)")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ip", default=os.getenv("WIIU_IP", "192.168.1.100"))
-    ap.add_argument("--pid", type=lambda x: int(x, 0), default=0, help="Target PID (default: auto-detect)")
+    ap.add_argument("--pid", type=lambda x: int(x, 0), default=0, help="Target PID (default: all profiles)")
     ap.add_argument("--title", required=True)
     ap.add_argument("--body", required=True)
     ap.add_argument("--feeling", default="HAPPY")

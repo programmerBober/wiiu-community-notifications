@@ -106,6 +106,7 @@ static void FormatSpotPassXml(char* dst, size_t dst_sz,
 #include <coreinit/dynload.h>
 #include <coreinit/debug.h>
 #include <nn/act/client_cpp.h>
+#include <vpad/input.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -125,10 +126,13 @@ WUPS_USE_STORAGE("community_notifications");
 #define PLUGIN_TCP_PORT 7331
 #define PLUGIN_LOG_SD   "fs:/vol/external01/wiiu/notifications/post_log.txt"
 
+static void ClearArrivalFlags();
+
 static OSThread s_worker_thread;
 static uint8_t s_thread_stack[0x8000] __attribute__((aligned(0x20)));
 static bool s_thread_active = false;
 static int s_server_fd = -1;
+static uint32_t s_led_active_ticks = 0;
 
 static void PluginLog(const char* fmt, ...) {
     FILE* f = fopen(PLUGIN_LOG_SD, "a");
@@ -437,6 +441,31 @@ static void HandleTcpClient(int client_fd) {
     char app[32] = "";
     char feeling[32] = "HAPPY";
 
+    // Fast-path commands
+    if (strstr(buf, "\"cmd\":\"led_off\"") || strstr(buf, "\"cmd\": \"led_off\"")) {
+        DrcLed_TurnOff();
+        ClearArrivalFlags();
+        s_led_active_ticks = 0;
+        const char* rep = "OK: LED turned off and arrival flags cleared\n";
+        send(client_fd, rep, strlen(rep), 0);
+        return;
+    }
+    if (strstr(buf, "\"cmd\":\"led_on\"") || strstr(buf, "\"cmd\": \"led_on\"")) {
+        DrcLed_TurnOn(1);
+        s_led_active_ticks = (s_config.led_duration_sec > 0 ? s_config.led_duration_sec : 10) * 4;
+        const char* rep = "OK: LED turned on (pattern 1)\n";
+        send(client_fd, rep, strlen(rep), 0);
+        return;
+    }
+    if (strstr(buf, "\"cmd\":\"clear\"") || strstr(buf, "\"cmd\": \"clear\"")) {
+        ClearArrivalFlags();
+        DrcLed_TurnOff();
+        s_led_active_ticks = 0;
+        const char* rep = "OK: Arrival flags cleared\n";
+        send(client_fd, rep, strlen(rep), 0);
+        return;
+    }
+
     char* t_pos = strstr(buf, "\"title\":");
     if (t_pos) {
         char* q1 = strchr(t_pos + 8, '\"');
@@ -506,6 +535,7 @@ static void HandleTcpClient(int client_fd) {
     bool ok = PostOfficialNotification(xml, status, sizeof(status));
     if (ok && s_config.enable_led) {
         DrcLed_TurnOn(1);
+        s_led_active_ticks = (s_config.led_duration_sec > 0 ? s_config.led_duration_sec : 10) * 4;
     }
 
     char reply[160];
@@ -521,9 +551,26 @@ static void OnAutonomousChanged(ConfigItemBoolean *item, bool newValue) {
 
 static void OnLedChanged(ConfigItemBoolean *item, bool newValue) {
     s_config.enable_led = newValue;
+    if (!newValue) {
+        DrcLed_TurnOff();
+        s_led_active_ticks = 0;
+    }
     WUPSStorageAPI_StoreBool(nullptr, "enable_led", newValue);
     PluginLog("[Plugin] Config: enable_led = %d", (int)newValue);
 }
+
+static void OnLedDurationChanged(ConfigItemMultipleValues *item, uint32_t val) {
+    s_config.led_duration_sec = val;
+    WUPSStorageAPI_StoreU32(nullptr, "led_duration_sec", val);
+    PluginLog("[Plugin] Config: led_duration_sec = %u", val);
+}
+
+static const ConfigItemMultipleValuesPair s_led_duration_pairs[] = {
+    { 5, "5 seconds" },
+    { 10, "10 seconds (SpotPass Default)" },
+    { 30, "30 seconds" },
+    { 60, "1 minute" }
+};
 
 static void OnOverlayChanged(ConfigItemBoolean *item, bool newValue) {
     s_config.enable_screen_overlay = newValue;
@@ -577,6 +624,25 @@ static WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHa
         OnIntervalChanged
     );
 
+    int cur_led_idx = 1; // 10s default
+    for (int i = 0; i < (int)(sizeof(s_led_duration_pairs) / sizeof(s_led_duration_pairs[0])); i++) {
+        if (s_led_duration_pairs[i].value == s_config.led_duration_sec) {
+            cur_led_idx = i;
+            break;
+        }
+    }
+
+    WUPSConfigItemMultipleValues_AddToCategory(
+        root,
+        "led_duration",
+        "GamePad LED Pulse Duration",
+        1, // default 10s
+        cur_led_idx,
+        (ConfigItemMultipleValuesPair*)s_led_duration_pairs,
+        sizeof(s_led_duration_pairs) / sizeof(s_led_duration_pairs[0]),
+        OnLedDurationChanged
+    );
+
     return WUPSCONFIG_API_CALLBACK_RESULT_SUCCESS;
 }
 
@@ -593,50 +659,59 @@ static void ClearArrivalFlags() {
     typedef void (*boss_almighty_ctor_t)(void* self, uint32_t pid, const uint64_t* title_id);
     typedef void (*boss_almighty_dtor_t)(void* self);
     typedef void (*boss_almighty_set_mark_t)(void* self, bool flag);
+    typedef void (*boss_almighty_set_mark_off_t)(void* self);
     typedef void (*boss_almighty_set_arrival_t)(void* self, bool flag);
     uint32_t (*boss_set_new_arrival)(const uint32_t *accountThis, uint32_t flag) = nullptr;
+    uint32_t (*boss_set_new_arrival_off)(const uint32_t *accountThis) = nullptr;
 
     boss_almighty_ctor_t boss_almighty_ctor = nullptr;
     boss_almighty_dtor_t boss_almighty_dtor = nullptr;
     boss_almighty_set_mark_t boss_almighty_set_mark = nullptr;
+    boss_almighty_set_mark_off_t boss_almighty_set_mark_off = nullptr;
     boss_almighty_set_arrival_t boss_almighty_set_arrival = nullptr;
 
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss7AccountFb", (void**)&boss_set_new_arrival);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlagOff__Q3_2nn4boss7AccountFv", (void**)&boss_set_new_arrival_off);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__ct__Q3_2nn4boss13AlmightyTitleFUiQ3_2nn4boss7TitleID", (void**)&boss_almighty_ctor);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__dt__Q3_2nn4boss13AlmightyTitleFv", (void**)&boss_almighty_dtor);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalMarkFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_mark);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalMarkFlagOff__Q3_2nn4boss13AlmightyTitleFv", (void**)&boss_almighty_set_mark_off);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_arrival);
 
     nn::act::Initialize();
-    uint32_t target_pid = nn::act::GetPersistentId();
-    if (target_pid == 0) {
-        for (uint8_t s = 1; s <= 12; s++) {
-            uint32_t pid = nn::act::GetPersistentIdEx(s);
-            if (pid != 0) {
-                target_pid = pid;
-                break;
-            }
-        }
-    }
+    const uint64_t notif_title_ids[] = {
+        0x000500101004D000ULL, // JPN
+        0x000500101004D100ULL, // USA
+        0x000500101004D200ULL  // EUR
+    };
 
-    if (target_pid != 0) {
-        if (boss_set_new_arrival) {
-            boss_set_new_arrival(&target_pid, 0);
+    for (uint8_t s = 1; s <= 12; s++) {
+        uint32_t pid = nn::act::GetPersistentIdEx(s);
+        if (pid == 0) continue;
+
+        if (boss_set_new_arrival_off) {
+            boss_set_new_arrival_off(&pid);
+        } else if (boss_set_new_arrival) {
+            boss_set_new_arrival(&pid, 0);
         }
-        if (boss_almighty_ctor && boss_almighty_set_mark) {
-            uint8_t almighty_buf[32] __attribute__((aligned(8)));
-            memset(almighty_buf, 0, sizeof(almighty_buf));
-            uint64_t notif_title_id = 0x000500101004D200ULL;
-            boss_almighty_ctor(almighty_buf, target_pid, &notif_title_id);
-            boss_almighty_set_mark(almighty_buf, 0);
-            if (boss_almighty_set_arrival) {
-                boss_almighty_set_arrival(almighty_buf, 0);
-            }
-            if (boss_almighty_dtor) {
+
+        if (boss_almighty_ctor && boss_almighty_dtor) {
+            for (size_t t = 0; t < sizeof(notif_title_ids) / sizeof(notif_title_ids[0]); t++) {
+                uint8_t almighty_buf[32] __attribute__((aligned(8)));
+                memset(almighty_buf, 0, sizeof(almighty_buf));
+                boss_almighty_ctor(almighty_buf, pid, &notif_title_ids[t]);
+                if (boss_almighty_set_mark_off) {
+                    boss_almighty_set_mark_off(almighty_buf);
+                } else if (boss_almighty_set_mark) {
+                    boss_almighty_set_mark(almighty_buf, 0);
+                }
+                if (boss_almighty_set_arrival) {
+                    boss_almighty_set_arrival(almighty_buf, 0);
+                }
                 boss_almighty_dtor(almighty_buf);
             }
         }
-        PluginLog("[Plugin] Cleared arrival & mark flags for PID 0x%08X", target_pid);
+        PluginLog("[Plugin] Cleared arrival & mark flags for PID 0x%08X", pid);
     }
     nn::act::Finalize();
 }
@@ -691,6 +766,7 @@ static int WorkerThreadMain(int argc, const char **argv) {
                         if (PostOfficialNotification(xml, status, sizeof(status))) {
                             if (s_config.enable_led && item->priority > 0) {
                                 DrcLed_TurnOn(1);
+                                s_led_active_ticks = (s_config.led_duration_sec > 0 ? s_config.led_duration_sec : 10) * 4;
                             }
                             if (s_config.enable_history_log) {
                                 Feed_AppendHistory(item);
@@ -713,6 +789,7 @@ static int WorkerThreadMain(int argc, const char **argv) {
                     if (ok) {
                         if (s_config.enable_led && auto_item.priority > 0) {
                             DrcLed_TurnOn(1);
+                            s_led_active_ticks = (s_config.led_duration_sec > 0 ? s_config.led_duration_sec : 10) * 4;
                         }
                         if (s_config.enable_history_log) {
                             Feed_AppendHistory(&auto_item);
@@ -743,6 +820,29 @@ static int WorkerThreadMain(int argc, const char **argv) {
             }
         } else {
             OSSleepTicks(OSMillisecondsToTicks(250));
+        }
+
+        // 4. GamePad input activity & LED auto-off handling
+        if (s_led_active_ticks > 0) {
+            VPADStatus vpad;
+            VPADReadError vpad_err;
+            int read_res = VPADRead(VPAD_CHAN_0, &vpad, 1, &vpad_err);
+            if (read_res > 0 && vpad_err == VPAD_READ_SUCCESS) {
+                // If user holds any button or touches the GamePad screen, turn off LED immediately
+                if (vpad.hold != 0 || vpad.tpNormal.touched != 0) {
+                    s_led_active_ticks = 0;
+                    DrcLed_TurnOff();
+                    PluginLog("[Plugin] LED dismissed by GamePad user interaction");
+                }
+            }
+
+            if (s_led_active_ticks > 0) {
+                s_led_active_ticks--;
+                if (s_led_active_ticks == 0) {
+                    DrcLed_TurnOff();
+                    PluginLog("[Plugin] LED auto-off timer expired");
+                }
+            }
         }
 
         ticks_since_poll++;
@@ -780,22 +880,26 @@ INITIALIZE_PLUGIN() {
         WUPSStorageAPI_GetBool(nullptr, "enable_screen_overlay", &s_config.enable_screen_overlay);
         WUPSStorageAPI_GetBool(nullptr, "enable_tcp", &s_config.enable_tcp);
         WUPSStorageAPI_GetU32(nullptr, "poll_interval_sec", &s_config.poll_interval_sec);
-        PluginLog("[Plugin] Storage loaded: auto=%d, led=%d, tcp=%d, interval=%u",
-                  (int)s_config.enable_autonomous, (int)s_config.enable_led, (int)s_config.enable_tcp, s_config.poll_interval_sec);
+        WUPSStorageAPI_GetU32(nullptr, "led_duration_sec", &s_config.led_duration_sec);
+        if (s_config.led_duration_sec == 0) s_config.led_duration_sec = 10;
+        PluginLog("[Plugin] Storage loaded: auto=%d, led=%d, tcp=%d, interval=%u, led_dur=%u",
+                  (int)s_config.enable_autonomous, (int)s_config.enable_led, (int)s_config.enable_tcp, s_config.poll_interval_sec, s_config.led_duration_sec);
     }
 }
 
 ON_APPLICATION_START() {
     StopWorkerThread();
 
+    // Ensure GamePad LED is extinguished and arrival flags are cleared on any title change
+    DrcLed_TurnOff();
+    ClearArrivalFlags();
+    s_led_active_ticks = 0;
+
     uint64_t tid = OSGetTitleID();
     // When inside Notification Menu applet itself (00050010-1004D000/100/200)
     if (tid == 0x000500101004D000ULL ||
         tid == 0x000500101004D100ULL ||
         tid == 0x000500101004D200ULL) {
-        // User opened Notification Menu: turn off LED & clear unread arrival flags
-        DrcLed_TurnOff();
-        ClearArrivalFlags();
         return;
     }
 
