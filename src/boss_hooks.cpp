@@ -2,7 +2,7 @@
  * nn_boss hooks: serve SD-card news (news_store) to the official Notification
  * applet (inf.rpx) without ever writing to MLC.
  *
- * - Storage objects initialised with dir "news" inside the Notification applet are tracked.
+ * - Storage objects initialised with dir "news" are tracked.
  * - Their GetDataList / GetUnreadDataList get SD items prepended (newest first),
  *   named "sdcn%08x" so they never collide with real BOSS DataNames.
  * - NsData objects opened with an "sdcn" name are tracked and every data call
@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <malloc.h>
 #include <wups.h>
@@ -27,15 +28,13 @@
 
 #define DATANAME_LEN 32
 
-static bool IsNotifApplet() {
-    // 00050010-1004D000 (JPN) / D100 (USA) / D200 (EUR)
-    return (OSGetTitleID() & ~0x300ULL) == 0x000500101004D000ULL;
-}
-
-static void HookLog(const char* fmt, const char* s, uint32_t v) {
+static void HookLog(const char* fmt, ...) {
     FILE* f = fopen(NOTIFY_SD_DIR "/post_log.txt", "a");
     if (!f) return;
-    fprintf(f, fmt, s ? s : "(null)", (unsigned)v);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(f, fmt, args);
+    va_end(args);
     fputc('\n', f);
     fclose(f);
 }
@@ -53,7 +52,9 @@ struct SdNsData { const void* obj; uint32_t serial; uint32_t pos; };
 static SdNsData s_nsdata[MAX_NSDATA];
 
 static void TrackStorage(const void* st, const char* dir) {
-    if (!IsNotifApplet() || !dir || strcmp(dir, "news") != 0) return;
+    if (!dir) return;
+    HookLog("[BossHook] Storage Init: dir='%s' (obj=%p)", dir, st);
+    if (strcmp(dir, "news") != 0) return;
     for (int i = 0; i < MAX_STORAGES; i++) if (s_news_storages[i] == st) return;
     for (int i = 0; i < MAX_STORAGES; i++) {
         if (!s_news_storages[i]) {
@@ -88,8 +89,10 @@ static void UntrackNsData(const void* obj) {
 
 static void TrackNsData(const void* obj, const char* name) {
     UntrackNsData(obj);   // objects can be re-initialised
-    uint32_t serial;
-    if (!IsNotifApplet() || !NewsStore_ParseName(name, &serial)) return;
+    if (!name) return;
+    uint32_t serial = 0;
+    if (!NewsStore_ParseName(name, &serial)) return;
+    HookLog("[BossHook] TrackNsData: name='%s' serial=0x%08X (obj=%p)", name, serial, obj);
     for (int i = 0; i < MAX_NSDATA; i++) {
         if (!s_nsdata[i].obj) {
             s_nsdata[i] = { obj, serial, 0 };
@@ -151,6 +154,8 @@ typedef uint32_t (*RealListFn)(const void*, char*, uint32_t, uint32_t*, uint32_t
 
 static uint32_t BuildList(RealListFn real, const void* self, char* names, uint32_t max,
                           uint32_t* out_count, uint32_t offset, bool unread_only) {
+    HookLog("[BossHook] BuildList: isNews=%d, max=%u, offset=%u, unread=%d",
+            IsNewsStorage(self) ? 1 : 0, max, offset, unread_only ? 1 : 0);
     if (!IsNewsStorage(self) || !names || !out_count) {
         return real(self, names, max, out_count, offset);
     }
@@ -163,6 +168,7 @@ static uint32_t BuildList(RealListFn real, const void* self, char* names, uint32
         if (unread_only && NewsStore_GetRead(all[i])) continue;
         sd[n++] = all[i];
     }
+    HookLog("[BossHook] SD items available: total=%u, matching=%u", total, n);
     if (n == 0) return real(self, names, max, out_count, offset);
 
     uint32_t written = 0;
@@ -177,6 +183,7 @@ static uint32_t BuildList(RealListFn real, const void* self, char* names, uint32
         if (BOSS_IS_OK(r)) written += real_count;
     }
     *out_count = written;
+    HookLog("[BossHook] BuildList returning count=%u", written);
     return BOSS_OK;
 }
 
@@ -298,6 +305,7 @@ DECL_FUNCTION(int32_t, NsData_Read, void* self, void* buf, uint32_t size) {
     SdNsData* e = FindNsData(self);
     if (!e) return real_NsData_Read(self, buf, size);
     int32_t got = NewsStore_Read(e->serial, e->pos, buf, size);
+    HookLog("[BossHook] NsData_Read: serial=0x%08X pos=%u req=%u got=%d", e->serial, e->pos, size, got);
     if (got < 0) return (int32_t)BOSS_ERR_NOT_FOUND;
     e->pos += (uint32_t)got;
     return got;
@@ -306,6 +314,7 @@ DECL_FUNCTION(uint32_t, NsData_ReadEx, void* self, int32_t* out_read, void* buf,
     SdNsData* e = FindNsData(self);
     if (!e) return real_NsData_ReadEx(self, out_read, buf, size);
     int32_t got = NewsStore_Read(e->serial, e->pos, buf, size);
+    HookLog("[BossHook] NsData_ReadEx: serial=0x%08X pos=%u req=%u got=%d", e->serial, e->pos, size, got);
     if (got < 0) return BOSS_ERR_NOT_FOUND;
     e->pos += (uint32_t)got;
     if (out_read) *out_read = got;
