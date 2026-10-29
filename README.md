@@ -9,7 +9,7 @@
   <a href="https://aroma.foryour.cafe"><img src="https://img.shields.io/badge/Platform-Wii%20U%20%7C%20Aroma%20CFW-informational.svg" alt="Platform: Wii U"></a>
   <a href="https://github.com/devkitPro/wut"><img src="https://img.shields.io/badge/Toolchain-devkitPPC%20%2B%20wut-green.svg" alt="Toolchain: devkitPPC + wut"></a>
   <img src="https://img.shields.io/badge/Pretendo-Compatible-purple.svg" alt="Pretendo Compatible">
-  <img src="https://img.shields.io/badge/Version-v0.2.0--beta-brightgreen.svg" alt="Version: v0.2.0-beta">
+  <img src="https://img.shields.io/badge/Version-v0.2.0--alpha-orange.svg" alt="Version: v0.2.0-alpha">
 </p>
 
 > [!NOTE]
