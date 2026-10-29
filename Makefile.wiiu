@@ -26,7 +26,8 @@ LDFLAGS := $(RPXSPECS) $(WUPSSPECS) \
            -lwups -lnotifications -lwut
 
 SRCS := src/main.cpp src/drc_led_controller.cpp src/notification_config.cpp \
-        src/notification_feed.cpp src/notifications_overlay.cpp
+        src/notification_feed.cpp src/notifications_overlay.cpp \
+        src/news_store.cpp src/boss_hooks.cpp
 
 .PHONY: all clean
 

@@ -12,7 +12,8 @@ CXXFLAGS_HOST := -std=c++17 -Wall -Wextra -O2 -Iinclude
 SRCS_COMMON := src/notification_config.cpp \
                src/notification_feed.cpp \
                src/drc_led_controller.cpp \
-               src/notifications_overlay.cpp
+               src/notifications_overlay.cpp \
+               src/news_store.cpp
 
 BIN_DIR := bin
 
@@ -27,8 +28,13 @@ $(BIN_DIR)/community_notify_sim: $(SRCS_COMMON) src/main.cpp
 	$(CXX) $(CXXFLAGS_HOST) $^ -o $@
 	@echo "Built Host Simulator: $@"
 
-test: $(BIN_DIR)/run_tests
+test: $(BIN_DIR)/run_tests $(BIN_DIR)/test_news_store
 	@./$(BIN_DIR)/run_tests
+	@./$(BIN_DIR)/test_news_store
+
+$(BIN_DIR)/test_news_store: src/news_store.cpp test/test_news_store.cpp
+	@mkdir -p $(BIN_DIR)
+	$(CXX) $(CXXFLAGS_HOST) $^ -o $@
 
 $(BIN_DIR)/run_tests: $(SRCS_COMMON) test/test_feed_parser.cpp
 	@mkdir -p $(BIN_DIR)

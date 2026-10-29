@@ -8,6 +8,7 @@
 #include "notification_feed.h"
 #include "drc_led_controller.h"
 #include "notifications_overlay.h"
+#include "news_store.h"
 
 static CommunityNotifyConfig s_config;
 static volatile bool s_plugin_running = false;
@@ -145,200 +146,71 @@ static void PluginLog(const char* fmt, ...) {
     fclose(f);
 }
 
-#define BOSS_NEWS_BASE     "fs:/vol/storage_mlc01/usr/boss/00050010/1004d200/user/common"
-#define BOSS_NEWS_BASE_ALT "/vol/storage_mlc01/usr/boss/00050010/1004d200/user/common"
 
-static bool InjectNewsDirect(const uint8_t* comp_buf, uint32_t comp_len, uint32_t pid, uint32_t* out_serial) {
-    char rc_path[256];
-    char fad_path[256];
-    char didx_path[256];
-    char data_path[256];
+// Raise the "new notification" badge / HOME-menu glow. These are tiny IOSU-managed
+// state flags (no news payload ever touches MLC; payloads live on SD via news_store).
+static void SignalNewArrival() {
+    OSDynLoad_Module boss_mod;
+    if (OSDynLoad_Acquire("nn_boss.rpl", &boss_mod) != OS_DYNLOAD_OK) return;
 
-    const char* base = BOSS_NEWS_BASE;
-    snprintf(rc_path, sizeof(rc_path), "%s/data/news/ref_count.db", base);
-    FILE* frc = fopen(rc_path, "r+b");
-    if (!frc) {
-        base = BOSS_NEWS_BASE_ALT;
-        snprintf(rc_path, sizeof(rc_path), "%s/data/news/ref_count.db", base);
-        frc = fopen(rc_path, "r+b");
-        if (!frc) {
-            PluginLog("[Plugin] DirectInject: could not open %s", rc_path);
-            return false;
-        }
-    }
-
-    uint8_t rc_hdr[8];
-    if (fread(rc_hdr, 1, 8, frc) != 8) {
-        fclose(frc);
-        return false;
-    }
-
-    uint32_t next_serial = 0x000F0001;
-    int rc_free_slot = -1;
-    for (int i = 0; i < 512; i++) {
-        uint8_t entry[0x24];
-        if (fread(entry, 1, 0x24, frc) != 0x24) break;
-        uint32_t s = (entry[0] << 24) | (entry[1] << 16) | (entry[2] << 8) | entry[3];
-        if (s != 0) {
-            if (s >= next_serial) next_serial = s + 1;
-        } else if (rc_free_slot < 0) {
-            rc_free_slot = i;
-        }
-    }
-    if (rc_free_slot < 0) {
-        fclose(frc);
-        PluginLog("[Plugin] DirectInject: ref_count.db full");
-        return false;
-    }
-
-    snprintf(fad_path, sizeof(fad_path), "%s/%08x/news/fad.db", base, pid);
-    FILE* ffad = fopen(fad_path, "r+b");
-    if (!ffad) {
-        fclose(frc);
-        PluginLog("[Plugin] DirectInject: could not open %s", fad_path);
-        return false;
-    }
-
-    uint8_t fad_hdr[8];
-    if (fread(fad_hdr, 1, 8, ffad) != 8) {
-        fclose(frc);
-        fclose(ffad);
-        return false;
-    }
-
-    int fad_free_slot = -1;
-    for (int i = 0; i < 512; i++) {
-        uint8_t entry[0x38];
-        if (fread(entry, 1, 0x38, ffad) != 0x38) break;
-        bool all_zero = true;
-        for (int b = 0; b < 0x38; b++) {
-            if (entry[b] != 0) { all_zero = false; break; }
-        }
-        if (all_zero) {
-            fad_free_slot = i;
-            break;
-        }
-    }
-    if (fad_free_slot < 0) {
-        fclose(frc);
-        fclose(ffad);
-        PluginLog("[Plugin] DirectInject: fad.db full");
-        return false;
-    }
-
-    snprintf(data_path, sizeof(data_path), "%s/data/news/%08x", base, next_serial);
-    FILE* fdata = fopen(data_path, "wb");
-    if (!fdata) {
-        fclose(frc);
-        fclose(ffad);
-        PluginLog("[Plugin] DirectInject: could not create %s", data_path);
-        return false;
-    }
-    fwrite(comp_buf, 1, comp_len, fdata);
-    fclose(fdata);
-
-    time_t cur_time = time(NULL);
-    uint32_t secs_2000 = (cur_time > 946684800) ? (uint32_t)(cur_time - 946684800) : (uint32_t)cur_time;
-    uint64_t us_2000 = (uint64_t)secs_2000 * 1000000ULL;
-
-    uint8_t rc_entry[0x24];
-    memset(rc_entry, 0, sizeof(rc_entry));
-    rc_entry[0] = (next_serial >> 24) & 0xFF;
-    rc_entry[1] = (next_serial >> 16) & 0xFF;
-    rc_entry[2] = (next_serial >> 8) & 0xFF;
-    rc_entry[3] = next_serial & 0xFF;
-    rc_entry[4] = 0x01;
-    rc_entry[8] = (comp_len >> 24) & 0xFF;
-    rc_entry[9] = (comp_len >> 16) & 0xFF;
-    rc_entry[10] = (comp_len >> 8) & 0xFF;
-    rc_entry[11] = comp_len & 0xFF;
-    for (int b = 0; b < 8; b++) {
-        rc_entry[28 + b] = (us_2000 >> (56 - b*8)) & 0xFF;
-    }
-    fseek(frc, 8 + rc_free_slot * 0x24, SEEK_SET);
-    fwrite(rc_entry, 1, 0x24, frc);
-    fclose(frc);
-
-    uint8_t fad_entry[0x38];
-    memset(fad_entry, 0, sizeof(fad_entry));
-    snprintf((char*)fad_entry, 32, "cn%x.xml", next_serial);
-    fad_entry[32] = (next_serial >> 24) & 0xFF;
-    fad_entry[33] = (next_serial >> 16) & 0xFF;
-    fad_entry[34] = (next_serial >> 8) & 0xFF;
-    fad_entry[35] = next_serial & 0xFF;
-    fad_entry[52] = (secs_2000 >> 24) & 0xFF;
-    fad_entry[53] = (secs_2000 >> 16) & 0xFF;
-    fad_entry[54] = (secs_2000 >> 8) & 0xFF;
-    fad_entry[55] = secs_2000 & 0xFF;
-    fseek(ffad, 8 + fad_free_slot * 0x38, SEEK_SET);
-    fwrite(fad_entry, 1, 0x38, ffad);
-    fclose(ffad);
-
-    snprintf(didx_path, sizeof(didx_path), "%s/%08x/news/didx.db", base, pid);
-    FILE* fdidx = fopen(didx_path, "r+b");
-    if (fdidx) {
-        uint32_t bit_index = next_serial - 1;
-        uint32_t byte_index = bit_index / 8;
-        uint8_t bit_mask = 0x80 >> (bit_index % 8);
-        fseek(fdidx, byte_index, SEEK_SET);
-        uint8_t b = 0;
-        if (fread(&b, 1, 1, fdidx) == 1) {
-            b |= bit_mask;
-            fseek(fdidx, byte_index, SEEK_SET);
-            fwrite(&b, 1, 1, fdidx);
-        }
-        fclose(fdidx);
-    }
-
-    if (out_serial) *out_serial = next_serial;
-    PluginLog("[Plugin] DirectInject SUCCESS: serial=0x%08X (len=%u) for PID=0x%08X", next_serial, comp_len, pid);
-    return true;
-}
-
-static bool PostOfficialNotification(const char* xml_text, char* out_status, size_t out_status_sz) {
-    OSDynLoad_Module zlib_mod, boss_mod;
-    if (OSDynLoad_Acquire("zlib125.rpl", &zlib_mod) != OS_DYNLOAD_OK) {
-        if (out_status) snprintf(out_status, out_status_sz, "Err: zlib125.rpl missing");
-        PluginLog("[Plugin] Err: zlib125.rpl missing");
-        return false;
-    }
-    if (OSDynLoad_Acquire("nn_boss.rpl", &boss_mod) != OS_DYNLOAD_OK) {
-        if (out_status) snprintf(out_status, out_status_sz, "Err: nn_boss.rpl missing");
-        PluginLog("[Plugin] Err: nn_boss.rpl missing");
-        return false;
-    }
-
-    int (*z_compress)(uint8_t *dest, uint32_t *destLen, const uint8_t *source, uint32_t sourceLen) = nullptr;
     uint32_t (*boss_init)() = nullptr;
-    uint32_t (*boss_post_news_pids)(const uint8_t *data, uint32_t size, const uint32_t *persistentIds, uint32_t numAccounts) = nullptr;
-    uint32_t (*boss_post_news_plural)(const uint8_t *slotList, uint32_t slotCount, const uint8_t *data, uint32_t size) = nullptr;
-    uint32_t (*boss_set_new_arrival)(const uint32_t *accountThis, uint32_t flag) = nullptr;
     uint32_t (*boss_finalize)() = nullptr;
-
+    uint32_t (*boss_set_new_arrival)(const uint32_t *accountThis, uint32_t flag) = nullptr;
     typedef void (*boss_almighty_ctor_t)(void* self, uint32_t pid, const uint64_t* title_id);
     typedef void (*boss_almighty_dtor_t)(void* self);
-    typedef void (*boss_almighty_set_mark_t)(void* self, bool flag);
-    typedef void (*boss_almighty_set_arrival_t)(void* self, bool flag);
-
+    typedef void (*boss_almighty_set_flag_t)(void* self, bool flag);
     boss_almighty_ctor_t boss_almighty_ctor = nullptr;
     boss_almighty_dtor_t boss_almighty_dtor = nullptr;
-    boss_almighty_set_mark_t boss_almighty_set_mark = nullptr;
-    boss_almighty_set_arrival_t boss_almighty_set_arrival = nullptr;
+    boss_almighty_set_flag_t boss_almighty_set_mark = nullptr;
+    boss_almighty_set_flag_t boss_almighty_set_arrival = nullptr;
 
-    OSDynLoad_FindExport(zlib_mod, OS_DYNLOAD_EXPORT_FUNC, "compress", (void**)&z_compress);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Initialize__Q2_2nn4bossFv", (void**)&boss_init);
-    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNews__Q3_2nn4boss4NewsSFPUcUiPUiT2", (void**)&boss_post_news_pids);
-    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "PostNewsToPluralAccount__Q3_2nn4boss4NewsSFPUcUiT1T2", (void**)&boss_post_news_plural);
+    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Finalize__Q2_2nn4bossFv", (void**)&boss_finalize);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss7AccountFb", (void**)&boss_set_new_arrival);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__ct__Q3_2nn4boss13AlmightyTitleFUiQ3_2nn4boss7TitleID", (void**)&boss_almighty_ctor);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "__dt__Q3_2nn4boss13AlmightyTitleFv", (void**)&boss_almighty_dtor);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalMarkFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_mark);
     OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "SetNewArrivalFlag__Q3_2nn4boss13AlmightyTitleFb", (void**)&boss_almighty_set_arrival);
-    OSDynLoad_FindExport(boss_mod, OS_DYNLOAD_EXPORT_FUNC, "Finalize__Q2_2nn4bossFv", (void**)&boss_finalize);
+    if (!boss_init) return;
 
-    if (!z_compress || !boss_init || !boss_post_news_pids) {
-        if (out_status) snprintf(out_status, out_status_sz, "Err: symbols not found");
-        PluginLog("[Plugin] Err: symbols not found");
+    nn::act::Initialize();
+    uint32_t target_pid = nn::act::GetPersistentId();
+    for (uint8_t s = 1; s <= 12 && target_pid == 0; s++) {
+        target_pid = nn::act::GetPersistentIdEx(s);
+    }
+    if (target_pid == 0) target_pid = 0x80000001;
+
+    boss_init();
+    if (boss_set_new_arrival) {
+        boss_set_new_arrival(&target_pid, 1);
+    }
+    if (boss_almighty_ctor && boss_almighty_set_mark) {
+        uint8_t almighty_buf[32] __attribute__((aligned(8)));
+        memset(almighty_buf, 0, sizeof(almighty_buf));
+        uint64_t notif_title_id = 0x000500101004D200ULL;
+        boss_almighty_ctor(almighty_buf, target_pid, &notif_title_id);
+        boss_almighty_set_mark(almighty_buf, 1);
+        if (boss_almighty_set_arrival) boss_almighty_set_arrival(almighty_buf, 1);
+        if (boss_almighty_dtor) boss_almighty_dtor(almighty_buf);
+    }
+    if (boss_finalize) boss_finalize();
+    nn::act::Finalize();
+    PluginLog("[Plugin] New-arrival flags raised for PID 0x%08X", target_pid);
+}
+
+// Compress the SpotPass XML and store it on the SD card. The official Notification
+// applet picks it up through the nn_boss hooks in boss_hooks.cpp. Zero MLC writes.
+static bool PostOfficialNotification(const char* xml_text, char* out_status, size_t out_status_sz) {
+    OSDynLoad_Module zlib_mod;
+    if (OSDynLoad_Acquire("zlib125.rpl", &zlib_mod) != OS_DYNLOAD_OK) {
+        if (out_status) snprintf(out_status, out_status_sz, "Err: zlib125.rpl missing");
+        PluginLog("[Plugin] Err: zlib125.rpl missing");
+        return false;
+    }
+    int (*z_compress)(uint8_t *dest, uint32_t *destLen, const uint8_t *source, uint32_t sourceLen) = nullptr;
+    OSDynLoad_FindExport(zlib_mod, OS_DYNLOAD_EXPORT_FUNC, "compress", (void**)&z_compress);
+    if (!z_compress) {
+        if (out_status) snprintf(out_status, out_status_sz, "Err: zlib compress not found");
         return false;
     }
 
@@ -350,7 +222,6 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
         if (out_status) snprintf(out_status, out_status_sz, "Err: OOM");
         return false;
     }
-
     int z_ret = z_compress(comp_buf, &comp_len, (const uint8_t*)xml_text, xml_len);
     if (z_ret != 0) {
         free(comp_buf);
@@ -358,75 +229,19 @@ static bool PostOfficialNotification(const char* xml_text, char* out_status, siz
         return false;
     }
 
-    nn::act::Initialize();
-    uint32_t target_pid = nn::act::GetPersistentId();
-    uint8_t target_slot = 0;
-    if (target_pid != 0) {
-        target_slot = nn::act::GetSlotNo();
-    } else {
-        for (uint8_t s = 1; s <= 12; s++) {
-            uint32_t pid = nn::act::GetPersistentIdEx(s);
-            if (pid != 0) {
-                target_pid = pid;
-                target_slot = s;
-                break;
-            }
-        }
-    }
-    if (target_pid == 0) {
-        target_pid = 0x80000001;
-        target_slot = 1;
-    }
-
-    // Try direct MLC news storage injection first
-    uint32_t direct_serial = 0;
-    bool direct_ok = InjectNewsDirect(comp_buf, comp_len, target_pid, &direct_serial);
-
-    uint32_t b_init = boss_init();
-    (void)b_init;
-    uint32_t post_ret = 0;
-    if (!direct_ok) {
-        post_ret = boss_post_news_pids(comp_buf, comp_len, &target_pid, 1);
-        PluginLog("[Plugin] Fallback PostNews(pid=0x%08X, len=%u) -> 0x%08X", target_pid, comp_len, post_ret);
-        if (post_ret != 0 && target_slot != 0 && boss_post_news_plural) {
-            post_ret = boss_post_news_plural(&target_slot, 1, comp_buf, comp_len);
-            PluginLog("[Plugin] Fallback PostNewsToPluralAccount(slot=%u) -> 0x%08X", target_slot, post_ret);
-        }
-    }
-
-    if (boss_set_new_arrival) {
-        uint32_t arr_ret = boss_set_new_arrival(&target_pid, 1);
-        PluginLog("[Plugin] SetNewArrivalFlag(0x%08X, 1) -> 0x%08X", target_pid, arr_ret);
-    }
-
-    if (boss_almighty_ctor && boss_almighty_set_mark) {
-        uint8_t almighty_buf[32] __attribute__((aligned(8)));
-        memset(almighty_buf, 0, sizeof(almighty_buf));
-        uint64_t notif_title_id = 0x000500101004D200ULL;
-        boss_almighty_ctor(almighty_buf, target_pid, &notif_title_id);
-        boss_almighty_set_mark(almighty_buf, 1);
-        if (boss_almighty_set_arrival) {
-            boss_almighty_set_arrival(almighty_buf, 1);
-        }
-        if (boss_almighty_dtor) {
-            boss_almighty_dtor(almighty_buf);
-        }
-        PluginLog("[Plugin] AlmightyTitle mark & arrival set for PID 0x%08X", target_pid);
-    }
-
-    if (boss_finalize) {
-        boss_finalize();
-    }
-    nn::act::Finalize();
+    uint32_t serial = 0;
+    bool ok = NewsStore_Save(comp_buf, comp_len, &serial);
     free(comp_buf);
-
-    if (direct_ok) {
-        if (out_status) snprintf(out_status, out_status_sz, "OK: direct=0x%08X (PID=0x%08X)", direct_serial, target_pid);
-        return true;
-    } else {
-        if (out_status) snprintf(out_status, out_status_sz, "post=0x%08X (PID=0x%08X)", post_ret, target_pid);
-        return (post_ret == 0);
+    if (!ok) {
+        if (out_status) snprintf(out_status, out_status_sz, "Err: SD write failed");
+        PluginLog("[Plugin] Err: could not save news to SD (" NOTIFY_SD_DIR "/news)");
+        return false;
     }
+    PluginLog("[Plugin] SD news saved: serial=0x%08X len=%u", serial, comp_len);
+
+    SignalNewArrival();
+    if (out_status) snprintf(out_status, out_status_sz, "OK: sd=0x%08X", serial);
+    return true;
 }
 
 static void HandleTcpClient(int client_fd) {
@@ -455,6 +270,12 @@ static void HandleTcpClient(int client_fd) {
         DrcLed_TurnOn(1);
         s_led_active_ticks = (s_config.led_duration_sec > 0 ? s_config.led_duration_sec : 10) * 4;
         const char* rep = "OK: LED turned on (pattern 1)\n";
+        send(client_fd, rep, strlen(rep), 0);
+        return;
+    }
+    if (strstr(buf, "\"cmd\":\"clear_news\"") || strstr(buf, "\"cmd\": \"clear_news\"")) {
+        char rep[96];
+        snprintf(rep, sizeof(rep), "OK: removed %u SD notification(s)\n", NewsStore_ClearAll());
         send(client_fd, rep, strlen(rep), 0);
         return;
     }
@@ -751,6 +572,7 @@ static int WorkerThreadMain(int argc, const char **argv) {
 
     DrcLed_Init();
     Feed_Init(NOTIFY_SD_DIR);
+    NewsStore_Init(NOTIFY_SD_DIR);
     Overlay_Init();
 
     // Open TCP listener on port 7331 if enabled
@@ -936,16 +758,19 @@ INITIALIZE_PLUGIN() {
 ON_APPLICATION_START() {
     StopWorkerThread();
 
-    // Ensure GamePad LED is extinguished and arrival flags are cleared on any title change
+    // Ensure GamePad LED is extinguished on any title change
     DrcLed_TurnOff();
-    ClearArrivalFlags();
     s_led_active_ticks = 0;
 
     uint64_t tid = OSGetTitleID();
-    // When inside Notification Menu applet itself (00050010-1004D000/100/200)
+    // When inside Notification Menu applet itself (00050010-1004D000/100/200):
+    // the user is reading notifications -> clear arrival flags (only here, to avoid
+    // needless IOSU flag writes on every title switch).
     if (tid == 0x000500101004D000ULL ||
         tid == 0x000500101004D100ULL ||
         tid == 0x000500101004D200ULL) {
+        NewsStore_Init(NOTIFY_SD_DIR);
+        ClearArrivalFlags();
         return;
     }
 

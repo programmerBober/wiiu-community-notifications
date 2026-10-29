@@ -41,13 +41,13 @@ flowchart TD
         TCP["TCP Listener (:7331)"]
         TestApp["NotifyTest (.wuhb)"]
         Plugin["CommunityNotifications (.wps)"]
-        BossEngine["Direct MLC BOSS Storage Injector"]
-        BossFallback["nn_boss.rpl (PostNews Fallback)"]
+        BossEngine["SD News Store (sd:/wiiu/notifications/news)"]
+        BossFallback["nn_boss.rpl hooks (serve SD news to inf.rpx)"]
         OfficialMenu["Official Notification Menu (inf.rpx)"]
         GamePadLED["GamePad DRC LED (nn::acp)"]
 
         CLI -->|WiFi Push TCP 7331| TCP
-        InjectTool -->|Direct FTP Injection| BossEngine
+        InjectTool -->|FTP upload to SD| BossEngine
         TCP --> Plugin
         Plugin --> BossEngine
         Plugin --> BossFallback
@@ -102,8 +102,8 @@ python3 tools/wiiu_notify.py --ip <WIIU_IP> --pretendo
 ```
 *(Tip: Set `export WIIU_IP="192.168.x.x"` to omit `--ip` on every command!)*
 
-### 2. `tools/wiiu_news_inject.py` (Direct MLC Storage Injector)
-Directly injects zlib-compressed notifications into the Wii U Notification applet's BOSS storage over FTP with auto-detected account slot:
+### 2. `tools/wiiu_news_inject.py` (SD News Uploader)
+Uploads a zlib-compressed notification to `sd:/wiiu/notifications/news/` over FTP. The plugin's `nn_boss` hooks make the official Notification applet read it straight from SD, so **nothing is ever written to internal MLC/NAND**. (The old direct-MLC injector is still available behind `--mlc-legacy`, but it's deprecated: NAND wear + corruption risk.)
 ```bash
 python3 tools/wiiu_news_inject.py --ip <WIIU_IP> --title "Pretendo" --body "Welcome to the revived SpotPass network!" --feeling HAPPY
 ```
@@ -213,9 +213,9 @@ python3 tools/pretendo_scraper.py --ip <WIIU_IP> --method inject
 python3 tools/pretendo_scraper.py --ip <WIIU_IP> --method inject --daemon --interval 300
 ```
 
-### 3. `tools/wiiu_news_inject.py` — Multi-Profile BOSS Storage Injector
+### 3. `tools/wiiu_news_inject.py` — SD News Uploader
 ```bash
-python3 tools/wiiu_news_inject.py --ip <WIIU_IP> --title "Notice" --body "Direct MLC injection" --feeling HAPPY
+python3 tools/wiiu_news_inject.py --ip <WIIU_IP> --title "Notice" --body "Stored safely on SD" --feeling HAPPY
 ```
 
 ---
